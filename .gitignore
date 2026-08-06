@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+
+# Local configuration
+.env
+
+# Generated data
+storage/
+estructura.txt
+# IDE
+.vscode/
+
+# Operating System
+.DS_Store
+Thumbs.db
