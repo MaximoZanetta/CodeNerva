@@ -1,0 +1,752 @@
+from typing import Annotated
+from uuid import UUID
+
+from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel
+
+from codenerva.api.dependencies import (
+    import_reference_store,
+    snapshot_store,
+    source_file_relation_store,
+    source_file_store,
+    storage_root,
+    symbol_relation_store,
+    symbol_store,
+)
+from codenerva.application.graph.graph_traversal_service import (
+    GraphTraversalService,
+)
+from codenerva.application.graph.graph_traversal_service import (
+    SymbolNotFoundError as TraversalSymbolNotFoundError,
+)
+from codenerva.application.graph.source_file_traversal_service import (
+    SourceFileNotFoundError as TraversalSourceFileNotFoundError,
+)
+from codenerva.application.graph.source_file_traversal_service import (
+    SourceFileTraversalService,
+)
+from codenerva.application.parsing.analyze_snapshot import (
+    AnalyzeSnapshotUseCase,
+)
+from codenerva.application.parsing.analyze_snapshot import (
+    SnapshotNotFoundError as AnalyzeSnapshotNotFoundError,
+)
+from codenerva.application.parsing.analyze_source_file import (
+    AnalyzeSourceFileUseCase,
+    SourceFileNotFoundError,
+    SymbolAnalysisNotAvailableError,
+)
+from codenerva.application.parsing.build_call_relations import (
+    BuildCallRelationsService,
+)
+from codenerva.application.parsing.build_source_file_relations import (
+    BuildSourceFileRelationsService,
+)
+from codenerva.application.parsing.build_symbol_relations import (
+    BuildSymbolRelationsService,
+)
+from codenerva.application.parsing.call_extractor_registry import (
+    CallExtractorRegistry,
+)
+from codenerva.application.parsing.import_extractor_registry import (
+    ImportExtractorRegistry,
+)
+from codenerva.application.parsing.import_reference_mapper import ImportReferenceMapper
+from codenerva.application.parsing.imported_symbol_resolver import (
+    ImportedSymbolResolver,
+)
+from codenerva.application.parsing.list_source_file_imports import (
+    ListSourceFileImportsUseCase,
+)
+from codenerva.application.parsing.list_source_file_imports import (
+    SourceFileNotFoundError as ListImportsSourceFileNotFoundError,
+)
+from codenerva.application.parsing.list_source_file_relations import (
+    ListSourceFileRelationsUseCase,
+)
+from codenerva.application.parsing.list_source_file_relations import (
+    SourceFileNotFoundError as ListRelationsSourceFileNotFoundError,
+)
+from codenerva.application.parsing.list_source_file_symbols import (
+    ListSourceFileSymbolsUseCase,
+)
+from codenerva.application.parsing.list_source_file_symbols import (
+    SourceFileNotFoundError as ListSymbolsSourceFileNotFoundError,
+)
+from codenerva.application.parsing.list_symbol_relations import (
+    ListSymbolRelationsUseCase,
+)
+from codenerva.application.parsing.list_symbol_relations import (
+    SourceFileNotFoundError as ListSymbolRelationsSourceFileNotFoundError,
+)
+from codenerva.application.parsing.local_import_resolver import LocalImportResolver
+from codenerva.application.parsing.parser_registry import (
+    ParserRegistry,
+)
+from codenerva.application.parsing.source_parser import SourceParser
+from codenerva.application.parsing.symbol_extractor_registry import (
+    SymbolExtractorRegistry,
+)
+
+# from codenerva.application.parsing.python_symbol_extractor import (
+#     PythonSymbolExtractor,
+# )
+from codenerva.application.parsing.symbol_mapper import (
+    SymbolMapper,
+)
+from codenerva.application.source.discover_snapshot_files import (
+    DiscoverSnapshotFilesUseCase,
+)
+from codenerva.application.source.discover_snapshot_files import (
+    SnapshotNotFoundError as DiscoverSnapshotNotFoundError,
+)
+from codenerva.application.source.file_discovery import FileDiscoveryService
+from codenerva.application.source.language_detector import LanguageDetector
+from codenerva.application.source.list_snapshot_files import (
+    ListSnapshotFilesUseCase,
+)
+from codenerva.application.source.list_snapshot_files import (
+    SnapshotNotFoundError as ListSnapshotNotFoundError,
+)
+from codenerva.infrastructure.in_memory_graph_repository import (
+    InMemoryGraphRepository,
+)
+
+router = APIRouter(
+    prefix="/api/v1/snapshots",
+    tags=["snapshots"],
+)
+
+
+class LanguageSummaryResponse(BaseModel):
+    language: str
+    file_count: int
+    total_bytes: int
+
+
+class DiscoverSnapshotFilesResponse(BaseModel):
+    snapshot_id: str
+    total_files: int
+    ignored_count: int
+    languages: list[LanguageSummaryResponse]
+
+
+class SourceFileResponse(BaseModel):
+    id: str
+    relative_path: str
+    language: str
+    size_bytes: int
+    content_hash: str
+
+
+class ListSnapshotFilesResponse(BaseModel):
+    snapshot_id: str
+    files: list[SourceFileResponse]
+
+
+class SymbolResponse(BaseModel):
+    id: str
+    name: str
+    qualified_name: str
+    kind: str
+    start_line: int
+    end_line: int
+    parent_symbol_id: str | None
+
+
+class AnalyzeSourceFileResponse(BaseModel):
+    source_file_id: str
+    has_parse_errors: bool
+    symbols: list[SymbolResponse]
+
+
+class ListSourceFileSymbolsResponse(BaseModel):
+    source_file_id: str
+    symbols: list[SymbolResponse]
+
+
+class AnalyzeSnapshotResponse(BaseModel):
+    snapshot_id: str
+    total_files: int
+    analyzed_files: int
+    skipped_files: int
+    files_with_parse_errors: int
+    total_symbols: int
+
+
+class ImportResponse(BaseModel):
+    id: str
+    module: str
+    imported_name: str | None
+    alias: str | None
+    line: int
+    resolved_source_file_id: str | None
+    resolved_relative_path: str | None
+
+
+class ListSourceFileImportsResponse(BaseModel):
+    source_file_id: str
+    imports: list[ImportResponse]
+
+
+class SourceFileRelationResponse(BaseModel):
+    id: str
+    kind: str
+    target_source_file_id: str
+    target_relative_path: str
+
+
+class ListSourceFileRelationsResponse(BaseModel):
+    source_file_id: str
+    relations: list[SourceFileRelationResponse]
+
+
+class SymbolRelationResponse(BaseModel):
+    id: str
+    kind: str
+    source_symbol_id: str
+    source_symbol_name: str
+    target_symbol_id: str
+    target_symbol_name: str
+
+
+class ListSymbolRelationsResponse(BaseModel):
+    source_file_id: str
+    relations: list[SymbolRelationResponse]
+
+
+class TraversalNodeResponse(BaseModel):
+    symbol_id: str
+    symbol_name: str
+    depth: int
+
+
+class CallTraversalResponse(BaseModel):
+    root_symbol_id: str
+    root_symbol_name: str
+    nodes: list[TraversalNodeResponse]
+
+
+class FileTraversalNodeResponse(BaseModel):
+    source_file_id: str
+    relative_path: str
+    depth: int
+
+
+class ImportTraversalResponse(BaseModel):
+    root_source_file_id: str
+    root_relative_path: str
+    nodes: list[FileTraversalNodeResponse]
+
+
+def get_discover_snapshot_files_use_case() -> DiscoverSnapshotFilesUseCase:
+    return DiscoverSnapshotFilesUseCase(
+        snapshot_store=snapshot_store,
+        source_file_store=source_file_store,
+        file_discovery_service=FileDiscoveryService(
+            language_detector=LanguageDetector(),
+        ),
+        storage_root=storage_root,
+    )
+
+
+def get_list_snapshot_files_use_case() -> ListSnapshotFilesUseCase:
+    return ListSnapshotFilesUseCase(
+        snapshot_store=snapshot_store,
+        source_file_store=source_file_store,
+    )
+
+
+def get_analyze_source_file_use_case() -> AnalyzeSourceFileUseCase:
+    return AnalyzeSourceFileUseCase(
+        source_file_store=source_file_store,
+        snapshot_store=snapshot_store,
+        symbol_store=symbol_store,
+        source_parser=SourceParser(
+            parser_registry=ParserRegistry(),
+        ),
+        symbol_extractor_registry=SymbolExtractorRegistry(),
+        symbol_mapper=SymbolMapper(),
+        storage_root=storage_root,
+        symbol_relation_store=symbol_relation_store,
+        build_symbol_relations_service=BuildSymbolRelationsService(),
+        import_reference_store=import_reference_store,
+        import_extractor_registry=ImportExtractorRegistry(),
+        import_reference_mapper=ImportReferenceMapper(),
+        source_file_relation_store=source_file_relation_store,
+        build_source_file_relations_service=BuildSourceFileRelationsService(
+            local_import_resolver=LocalImportResolver(),
+        ),
+        call_extractor_registry=CallExtractorRegistry(),
+        build_call_relations_service=BuildCallRelationsService(
+            imported_symbol_resolver=ImportedSymbolResolver(
+                source_file_relation_store=source_file_relation_store,
+                symbol_store=symbol_store,
+            )
+        ),
+    )
+
+
+def get_list_source_file_symbols_use_case() -> ListSourceFileSymbolsUseCase:
+    return ListSourceFileSymbolsUseCase(
+        source_file_store=source_file_store,
+        symbol_store=symbol_store,
+    )
+
+
+def get_analyze_snapshot_use_case() -> AnalyzeSnapshotUseCase:
+    return AnalyzeSnapshotUseCase(
+        snapshot_store=snapshot_store,
+        source_file_store=source_file_store,
+        symbol_store=symbol_store,
+        source_parser=SourceParser(
+            parser_registry=ParserRegistry(),
+        ),
+        symbol_extractor_registry=SymbolExtractorRegistry(),
+        symbol_mapper=SymbolMapper(),
+        storage_root=storage_root,
+        symbol_relation_store=symbol_relation_store,
+        build_symbol_relations_service=BuildSymbolRelationsService(),
+        import_reference_store=import_reference_store,
+        import_extractor_registry=ImportExtractorRegistry(),
+        import_reference_mapper=ImportReferenceMapper(),
+        source_file_relation_store=source_file_relation_store,
+        build_source_file_relations_service=BuildSourceFileRelationsService(
+            local_import_resolver=LocalImportResolver(),
+        ),
+        call_extractor_registry=CallExtractorRegistry(),
+        build_call_relations_service=BuildCallRelationsService(
+            imported_symbol_resolver=ImportedSymbolResolver(
+                source_file_relation_store=source_file_relation_store,
+                symbol_store=symbol_store,
+            ),
+        ),
+    )
+
+
+def get_list_source_file_imports_use_case() -> ListSourceFileImportsUseCase:
+    return ListSourceFileImportsUseCase(
+        source_file_store=source_file_store,
+        import_reference_store=import_reference_store,
+        source_file_relation_store=source_file_relation_store,
+    )
+
+
+def get_list_source_file_relations_use_case() -> ListSourceFileRelationsUseCase:
+    return ListSourceFileRelationsUseCase(
+        source_file_store=source_file_store,
+        source_file_relation_store=source_file_relation_store,
+    )
+
+
+def get_list_symbol_relations_use_case() -> ListSymbolRelationsUseCase:
+    return ListSymbolRelationsUseCase(
+        source_file_store=source_file_store,
+        symbol_store=symbol_store,
+        symbol_relation_store=symbol_relation_store,
+    )
+
+
+def get_graph_traversal_service() -> GraphTraversalService:
+    graph_repository = InMemoryGraphRepository(
+        symbol_store=symbol_store,
+        symbol_relation_store=symbol_relation_store,
+        source_file_store=source_file_store,
+        source_file_relation_store=source_file_relation_store,
+    )
+
+    return GraphTraversalService(
+        graph_repository=graph_repository,
+    )
+
+
+def get_source_file_traversal_service() -> SourceFileTraversalService:
+    graph_repository = InMemoryGraphRepository(
+        symbol_store=symbol_store,
+        symbol_relation_store=symbol_relation_store,
+        source_file_store=source_file_store,
+        source_file_relation_store=source_file_relation_store,
+    )
+
+    return SourceFileTraversalService(
+        graph_repository=graph_repository,
+    )
+
+
+@router.post(
+    "/{snapshot_id}/discover-files",
+    response_model=DiscoverSnapshotFilesResponse,
+    status_code=status.HTTP_200_OK,
+)
+def discover_snapshot_files(
+    snapshot_id: UUID,
+    use_case: Annotated[
+        DiscoverSnapshotFilesUseCase,
+        Depends(get_discover_snapshot_files_use_case),
+    ],
+) -> DiscoverSnapshotFilesResponse:
+    try:
+        result = use_case.execute(snapshot_id)
+    except DiscoverSnapshotNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from exc
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        ) from exc
+
+    return DiscoverSnapshotFilesResponse(
+        snapshot_id=str(result.snapshot_id),
+        total_files=result.total_files,
+        ignored_count=result.ignored_count,
+        languages=[
+            LanguageSummaryResponse(
+                language=summary.language.value,
+                file_count=summary.file_count,
+                total_bytes=summary.total_bytes,
+            )
+            for summary in result.languages
+        ],
+    )
+
+
+@router.get(
+    "/{snapshot_id}/files",
+    response_model=ListSnapshotFilesResponse,
+)
+def list_snapshot_files(
+    snapshot_id: UUID,
+    use_case: Annotated[
+        ListSnapshotFilesUseCase,
+        Depends(get_list_snapshot_files_use_case),
+    ],
+) -> ListSnapshotFilesResponse:
+    try:
+        result = use_case.execute(snapshot_id)
+    except ListSnapshotNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from exc
+
+    return ListSnapshotFilesResponse(
+        snapshot_id=str(result.snapshot_id),
+        files=[
+            SourceFileResponse(
+                id=str(source_file.id),
+                relative_path=source_file.relative_path,
+                language=source_file.language.value,
+                size_bytes=source_file.size_bytes,
+                content_hash=source_file.content_hash,
+            )
+            for source_file in result.files
+        ],
+    )
+
+
+@router.post(
+    "/files/{source_file_id}/analyze",
+    response_model=AnalyzeSourceFileResponse,
+)
+def analyze_source_file(
+    source_file_id: UUID,
+    use_case: Annotated[
+        AnalyzeSourceFileUseCase,
+        Depends(get_analyze_source_file_use_case),
+    ],
+) -> AnalyzeSourceFileResponse:
+    try:
+        result = use_case.execute(
+            source_file_id=source_file_id,
+        )
+    except SourceFileNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from exc
+    except SymbolAnalysisNotAvailableError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        ) from exc
+
+    return AnalyzeSourceFileResponse(
+        source_file_id=str(result.source_file_id),
+        has_parse_errors=result.has_parse_errors,
+        symbols=[
+            SymbolResponse(
+                id=str(symbol.id),
+                name=symbol.name,
+                qualified_name=symbol.qualified_name,
+                kind=symbol.kind.value,
+                start_line=symbol.start_line,
+                end_line=symbol.end_line,
+                parent_symbol_id=(
+                    str(symbol.parent_symbol_id) if symbol.parent_symbol_id else None
+                ),
+            )
+            for symbol in result.symbols
+        ],
+    )
+
+
+@router.get(
+    "/files/{source_file_id}/symbols",
+    response_model=ListSourceFileSymbolsResponse,
+)
+def list_source_file_symbols(
+    source_file_id: UUID,
+    use_case: Annotated[
+        ListSourceFileSymbolsUseCase,
+        Depends(get_list_source_file_symbols_use_case),
+    ],
+) -> ListSourceFileSymbolsResponse:
+    try:
+        result = use_case.execute(source_file_id)
+    except ListSymbolsSourceFileNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from exc
+
+    return ListSourceFileSymbolsResponse(
+        source_file_id=str(result.source_file_id),
+        symbols=[
+            SymbolResponse(
+                id=str(symbol.id),
+                name=symbol.name,
+                qualified_name=symbol.qualified_name,
+                kind=symbol.kind.value,
+                start_line=symbol.start_line,
+                end_line=symbol.end_line,
+                parent_symbol_id=(
+                    str(symbol.parent_symbol_id) if symbol.parent_symbol_id else None
+                ),
+            )
+            for symbol in result.symbols
+        ],
+    )
+
+
+@router.post(
+    "/{snapshot_id}/analyze",
+    response_model=AnalyzeSnapshotResponse,
+)
+def analyze_snapshot(
+    snapshot_id: UUID,
+    use_case: Annotated[
+        AnalyzeSnapshotUseCase,
+        Depends(get_analyze_snapshot_use_case),
+    ],
+) -> AnalyzeSnapshotResponse:
+    try:
+        result = use_case.execute(snapshot_id)
+    except AnalyzeSnapshotNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from exc
+
+    return AnalyzeSnapshotResponse(
+        snapshot_id=str(result.snapshot_id),
+        total_files=result.total_files,
+        analyzed_files=result.analyzed_files,
+        skipped_files=result.skipped_files,
+        files_with_parse_errors=result.files_with_parse_errors,
+        total_symbols=result.total_symbols,
+    )
+
+
+@router.get(
+    "/files/{source_file_id}/imports",
+    response_model=ListSourceFileImportsResponse,
+)
+def list_source_file_imports(
+    source_file_id: UUID,
+    use_case: Annotated[
+        ListSourceFileImportsUseCase,
+        Depends(get_list_source_file_imports_use_case),
+    ],
+) -> ListSourceFileImportsResponse:
+    try:
+        result = use_case.execute(source_file_id)
+    except ListImportsSourceFileNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from exc
+
+    return ListSourceFileImportsResponse(
+        source_file_id=str(result.source_file_id),
+        imports=[
+            ImportResponse(
+                id=str(item.id),
+                module=item.module,
+                imported_name=item.imported_name,
+                alias=item.alias,
+                line=item.line,
+                resolved_source_file_id=(
+                    str(item.resolved_source_file_id)
+                    if item.resolved_source_file_id
+                    else None
+                ),
+                resolved_relative_path=item.resolved_relative_path,
+            )
+            for item in result.imports
+        ],
+    )
+
+
+@router.get(
+    "/files/{source_file_id}/relations",
+    response_model=ListSourceFileRelationsResponse,
+)
+def list_source_file_relations(
+    source_file_id: UUID,
+    use_case: Annotated[
+        ListSourceFileRelationsUseCase,
+        Depends(get_list_source_file_relations_use_case),
+    ],
+) -> ListSourceFileRelationsResponse:
+    try:
+        result = use_case.execute(source_file_id)
+    except ListRelationsSourceFileNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from exc
+
+    return ListSourceFileRelationsResponse(
+        source_file_id=str(result.source_file_id),
+        relations=[
+            SourceFileRelationResponse(
+                id=str(relation.id),
+                kind=relation.kind.value,
+                target_source_file_id=str(relation.target_source_file_id),
+                target_relative_path=relation.target_relative_path,
+            )
+            for relation in result.relations
+        ],
+    )
+
+
+@router.get(
+    "/files/{source_file_id}/symbol-relations",
+    response_model=ListSymbolRelationsResponse,
+)
+def list_symbol_relations(
+    source_file_id: UUID,
+    use_case: Annotated[
+        ListSymbolRelationsUseCase,
+        Depends(get_list_symbol_relations_use_case),
+    ],
+) -> ListSymbolRelationsResponse:
+    try:
+        result = use_case.execute(source_file_id)
+    except ListSymbolRelationsSourceFileNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from exc
+
+    return ListSymbolRelationsResponse(
+        source_file_id=str(result.source_file_id),
+        relations=[
+            SymbolRelationResponse(
+                id=str(relation.id),
+                kind=relation.kind.value,
+                source_symbol_id=str(relation.source_symbol_id),
+                source_symbol_name=relation.source_symbol_name,
+                target_symbol_id=str(relation.target_symbol_id),
+                target_symbol_name=relation.target_symbol_name,
+            )
+            for relation in result.relations
+        ],
+    )
+
+
+@router.get(
+    "/symbols/{symbol_id}/calls",
+    response_model=CallTraversalResponse,
+)
+def traverse_symbol_calls(
+    symbol_id: UUID,
+    max_depth: int = 3,
+    service: Annotated[
+        GraphTraversalService,
+        Depends(get_graph_traversal_service),
+    ] = None,
+) -> CallTraversalResponse:
+    try:
+        result = service.walk_calls(
+            symbol_id=symbol_id,
+            max_depth=max_depth,
+        )
+    except TraversalSymbolNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from exc
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        ) from exc
+
+    return CallTraversalResponse(
+        root_symbol_id=str(result.root.id),
+        root_symbol_name=result.root.qualified_name,
+        nodes=[
+            TraversalNodeResponse(
+                symbol_id=str(node.symbol.id),
+                symbol_name=node.symbol.qualified_name,
+                depth=node.depth,
+            )
+            for node in result.nodes
+        ],
+    )
+
+
+@router.get(
+    "/files/{source_file_id}/import-tree",
+    response_model=ImportTraversalResponse,
+)
+def traverse_source_file_imports(
+    source_file_id: UUID,
+    service: Annotated[
+        SourceFileTraversalService,
+        Depends(get_source_file_traversal_service),
+    ],
+    max_depth: int = 3,
+) -> ImportTraversalResponse:
+    try:
+        result = service.walk_imports(
+            source_file_id=source_file_id,
+            max_depth=max_depth,
+        )
+    except TraversalSourceFileNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from exc
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        ) from exc
+
+    return ImportTraversalResponse(
+        root_source_file_id=str(result.root.id),
+        root_relative_path=str(result.root.relative_path),
+        nodes=[
+            FileTraversalNodeResponse(
+                source_file_id=str(node.source_file.id),
+                relative_path=str(node.source_file.relative_path),
+                depth=node.depth,
+            )
+            for node in result.nodes
+        ],
+    )

@@ -1,0 +1,28 @@
+from enum import StrEnum
+
+
+class ProgrammingLanguage(StrEnum):
+    PYTHON = "python"
+    JAVASCRIPT = "javascript"
+    TYPESCRIPT = "typescript"
+    TSX = "tsx"
+    JAVA = "java"
+    GO = "go"
+    RUST = "rust"
+    CPP = "cpp"
+    C = "c"
+    CSHARP = "csharp"
+    PHP = "php"
+    RUBY = "ruby"
+    KOTLIN = "kotlin"
+    SWIFT = "swift"
+    SCALA = "scala"
+    HTML = "html"
+    CSS = "css"
+    JSON = "json"
+    YAML = "yaml"
+    XML = "xml"
+    TOML = "toml"
+    MARKDOWN = "markdown"
+    DOCKERFILE = "dockerfile"
+    UNKNOWN = "unknown"

@@ -4,6 +4,10 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
+from codenerva.api.dependencies import (
+    project_repository,
+    repository_store,
+)
 from codenerva.application.project.create_project import (
     CreateProjectCommand,
     CreateProjectResult,
@@ -17,12 +21,6 @@ from codenerva.application.repository.register_repository import (
     RegisterRepositoryResult,
     RegisterRepositoryUseCase,
     RepositoryAlreadyExistsError,
-)
-from codenerva.infrastructure.in_memory_project_repository import (
-    InMemoryProjectRepository,
-)
-from codenerva.infrastructure.in_memory_repository_store import (
-    InMemoryRepositoryStore,
 )
 
 router = APIRouter(
@@ -41,10 +39,6 @@ class ProjectResponse(BaseModel):
     name: str
     description: str | None
     status: str
-
-
-project_repository = InMemoryProjectRepository()
-repository_store = InMemoryRepositoryStore()
 
 
 def get_create_project_use_case() -> CreateProjectUseCase:
