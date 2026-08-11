@@ -1,3 +1,4 @@
+from pathlib import Path
 from typing import Annotated
 from uuid import UUID
 
@@ -5,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 
 from codenerva.api.dependencies import (
+    chunk_store,
     import_reference_store,
     snapshot_store,
     source_file_relation_store,
@@ -12,6 +14,21 @@ from codenerva.api.dependencies import (
     storage_root,
     symbol_relation_store,
     symbol_store,
+    vector_store,
+)
+from codenerva.application.chunking.symbol_chunker import SymbolChunker
+from codenerva.application.embeddings.embed_chunks import EmbedChunksUseCase
+from codenerva.application.embeddings.index_snapshot import (
+    IndexSnapshotUseCase,
+)
+from codenerva.application.embeddings.index_snapshot import (
+    SnapshotNotFoundError as IndexSnapshotNotFoundError,
+)
+from codenerva.application.embeddings.vector_record_mapper import (
+    VectorRecordMapper,
+)
+from codenerva.application.graph.graph_query_service import (
+    GraphQueryService,
 )
 from codenerva.application.graph.graph_traversal_service import (
     GraphTraversalService,
@@ -94,6 +111,25 @@ from codenerva.application.parsing.symbol_extractor_registry import (
 from codenerva.application.parsing.symbol_mapper import (
     SymbolMapper,
 )
+from codenerva.application.parsing.typescript_path_alias_resolver import (
+    TypeScriptPathAliasResolver,
+)
+from codenerva.application.qa.answer_repository_question import (
+    AnswerRepositoryQuestionUseCase,
+)
+from codenerva.application.retrieval.context_formatter import (
+    ContextFormatter,
+)
+from codenerva.application.retrieval.hybrid_reranker import HybridReranker
+from codenerva.application.retrieval.hybrid_retrieval import (
+    HybridRetrievalUseCase,
+)
+from codenerva.application.retrieval.retrieval_context_builder import (
+    RetrievalContextBuilder,
+)
+from codenerva.application.retrieval.semantic_search import (
+    SemanticSearchUseCase,
+)
 from codenerva.application.source.discover_snapshot_files import (
     DiscoverSnapshotFilesUseCase,
 )
@@ -110,6 +146,12 @@ from codenerva.application.source.list_snapshot_files import (
 )
 from codenerva.infrastructure.in_memory_graph_repository import (
     InMemoryGraphRepository,
+)
+from codenerva.infrastructure.openai_embedding_provider import (
+    OpenAIEmbeddingProvider,
+)
+from codenerva.infrastructure.openai_llm_provider import (
+    OpenAILLMProvider,
 )
 
 router = APIRouter(
@@ -239,6 +281,105 @@ class ImportTraversalResponse(BaseModel):
     nodes: list[FileTraversalNodeResponse]
 
 
+class ChunkResponse(BaseModel):
+    id: str
+    symbol_id: str
+    qualified_name: str
+    symbol_kind: str
+    relative_path: str
+    language: str
+    start_line: int
+    end_line: int
+    part_index: int
+    part_count: int
+    text: str
+
+
+class ListChunksResponse(BaseModel):
+    source_file_id: str
+    chunks: list[ChunkResponse]
+
+
+class IndexSourceFileResponse(BaseModel):
+    source_file_id: str
+    indexed_chunks: int
+
+
+class SemanticSearchItemResponse(BaseModel):
+    chunk_id: str
+    symbol_id: str
+    qualified_name: str
+    relative_path: str
+    language: str
+    symbol_kind: str
+    score: float
+
+
+class SemanticSearchResponse(BaseModel):
+    query: str
+    results: list[SemanticSearchItemResponse]
+
+
+class HybridSemanticHitResponse(BaseModel):
+    symbol_id: str
+    qualified_name: str
+    kind: str
+    score: float
+
+
+class HybridExpandedSymbolResponse(BaseModel):
+    symbol_id: str
+    qualified_name: str
+    kind: str
+    relation: str
+    source_symbol_id: str
+
+
+class HybridSearchResponse(BaseModel):
+    query: str
+    semantic_hits: list[HybridSemanticHitResponse]
+    expanded_symbols: list[HybridExpandedSymbolResponse]
+
+
+class RetrievalContextItemResponse(BaseModel):
+    symbol_id: str
+    qualified_name: str
+    relative_path: str
+    language: str
+    symbol_kind: str
+    semantic_score: float | None
+    semantic_rank: int | None
+    graph_relations: list[str]
+    text: str
+
+
+class HybridContextResponse(BaseModel):
+    query: str
+    items: list[RetrievalContextItemResponse]
+    formatted_context: str
+
+
+class AskRepositoryRequest(BaseModel):
+    question: str
+    top_k: int = 3
+    max_items: int = 6
+    max_chars: int = 12000
+
+
+class AskRepositoryResponse(BaseModel):
+    question: str
+    answer: str
+    context_items: int
+
+
+class IndexSnapshotResponse(BaseModel):
+    snapshot_id: str
+    total_files: int
+    indexed_files: int
+    skipped_files: int
+    indexed_chunks: int
+
+
 def get_discover_snapshot_files_use_case() -> DiscoverSnapshotFilesUseCase:
     return DiscoverSnapshotFilesUseCase(
         snapshot_store=snapshot_store,
@@ -276,6 +417,7 @@ def get_analyze_source_file_use_case() -> AnalyzeSourceFileUseCase:
         source_file_relation_store=source_file_relation_store,
         build_source_file_relations_service=BuildSourceFileRelationsService(
             local_import_resolver=LocalImportResolver(),
+            typescript_path_alias_resolver=TypeScriptPathAliasResolver(),
         ),
         call_extractor_registry=CallExtractorRegistry(),
         build_call_relations_service=BuildCallRelationsService(
@@ -313,6 +455,7 @@ def get_analyze_snapshot_use_case() -> AnalyzeSnapshotUseCase:
         source_file_relation_store=source_file_relation_store,
         build_source_file_relations_service=BuildSourceFileRelationsService(
             local_import_resolver=LocalImportResolver(),
+            typescript_path_alias_resolver=TypeScriptPathAliasResolver(),
         ),
         call_extractor_registry=CallExtractorRegistry(),
         build_call_relations_service=BuildCallRelationsService(
@@ -370,6 +513,65 @@ def get_source_file_traversal_service() -> SourceFileTraversalService:
 
     return SourceFileTraversalService(
         graph_repository=graph_repository,
+    )
+
+
+def get_hybrid_retrieval_use_case() -> HybridRetrievalUseCase:
+    graph_repository = InMemoryGraphRepository(
+        symbol_store=symbol_store,
+        symbol_relation_store=symbol_relation_store,
+        source_file_store=source_file_store,
+        source_file_relation_store=source_file_relation_store,
+    )
+
+    semantic_search = SemanticSearchUseCase(
+        embedding_provider=OpenAIEmbeddingProvider(),
+        vector_store=vector_store,
+    )
+
+    graph_query_service = GraphQueryService(
+        graph_repository=graph_repository,
+    )
+
+    return HybridRetrievalUseCase(
+        semantic_search=semantic_search,
+        graph_query_service=graph_query_service,
+    )
+
+
+def get_retrieval_context_builder() -> RetrievalContextBuilder:
+    return RetrievalContextBuilder(
+        chunk_store=chunk_store,
+    )
+
+
+def get_answer_repository_question_use_case() -> AnswerRepositoryQuestionUseCase:
+    return AnswerRepositoryQuestionUseCase(
+        hybrid_retrieval=get_hybrid_retrieval_use_case(),
+        hybrid_reranker=HybridReranker(),
+        context_builder=RetrievalContextBuilder(
+            chunk_store=chunk_store,
+        ),
+        context_formatter=ContextFormatter(),
+        llm_provider=OpenAILLMProvider(),
+    )
+
+
+def get_index_snapshot_use_case() -> IndexSnapshotUseCase:
+    embed_chunks_use_case = EmbedChunksUseCase(
+        embedding_provider=OpenAIEmbeddingProvider(),
+        vector_store=vector_store,
+        vector_record_mapper=VectorRecordMapper(),
+    )
+
+    return IndexSnapshotUseCase(
+        snapshot_store=snapshot_store,
+        source_file_store=source_file_store,
+        symbol_store=symbol_store,
+        chunk_store=chunk_store,
+        symbol_chunker=SymbolChunker(),
+        embed_chunks_use_case=embed_chunks_use_case,
+        storage_root=storage_root,
     )
 
 
@@ -749,4 +951,323 @@ def traverse_source_file_imports(
             )
             for node in result.nodes
         ],
+    )
+
+
+@router.get(
+    "/files/{source_file_id}/chunks",
+    response_model=ListChunksResponse,
+)
+def list_source_file_chunks(
+    source_file_id: UUID,
+) -> ListChunksResponse:
+    source_file = source_file_store.get_by_id(source_file_id)
+
+    if source_file is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Source file with id {source_file_id} was not found.",
+        )
+
+    snapshot = snapshot_store.get_by_id(source_file.snapshot_id)
+
+    if snapshot is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=(f"Snapshot with id {source_file.snapshot_id} was not found."),
+        )
+
+    symbols = symbol_store.list_by_source_file_id(source_file.id)
+
+    file_path = (
+        storage_root
+        / "repositories"
+        / str(snapshot.repository_id)
+        / Path(source_file.relative_path.as_posix())
+    )
+
+    source = file_path.read_text(encoding="utf-8")
+
+    chunks = SymbolChunker().chunk(
+        source_file=source_file,
+        symbols=symbols,
+        source=source,
+    )
+
+    return ListChunksResponse(
+        source_file_id=str(source_file.id),
+        chunks=[
+            ChunkResponse(
+                id=str(chunk.id),
+                symbol_id=str(chunk.symbol_id),
+                qualified_name=chunk.qualified_name,
+                symbol_kind=chunk.symbol_kind,
+                relative_path=chunk.relative_path,
+                language=chunk.language,
+                start_line=chunk.start_line,
+                end_line=chunk.end_line,
+                part_index=chunk.part_index,
+                part_count=chunk.part_count,
+                text=chunk.text,
+            )
+            for chunk in chunks
+        ],
+    )
+
+
+@router.post(
+    "/files/{source_file_id}/index",
+    response_model=IndexSourceFileResponse,
+)
+def index_source_file(
+    source_file_id: UUID,
+) -> IndexSourceFileResponse:
+    source_file = source_file_store.get_by_id(source_file_id)
+
+    if source_file is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Source file with id {source_file_id} was not found.",
+        )
+
+    snapshot = snapshot_store.get_by_id(source_file.snapshot_id)
+
+    if snapshot is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Snapshot with id {source_file.snapshot_id} was not found.",
+        )
+
+    symbols = symbol_store.list_by_source_file_id(source_file.id)
+
+    file_path = (
+        storage_root
+        / "repositories"
+        / str(snapshot.repository_id)
+        / Path(source_file.relative_path.as_posix())
+    )
+
+    source = file_path.read_text(encoding="utf-8")
+
+    chunks = SymbolChunker().chunk(
+        source_file=source_file,
+        symbols=symbols,
+        source=source,
+    )
+    chunk_store.save_many(chunks)
+
+    use_case = EmbedChunksUseCase(
+        embedding_provider=OpenAIEmbeddingProvider(),
+        vector_store=vector_store,
+        vector_record_mapper=VectorRecordMapper(),
+    )
+
+    result = use_case.execute(chunks=chunks)
+
+    return IndexSourceFileResponse(
+        source_file_id=str(source_file.id),
+        indexed_chunks=result.embedded_chunks,
+    )
+
+
+@router.get(
+    "/semantic-search",
+    response_model=SemanticSearchResponse,
+)
+def semantic_search(
+    query: str,
+    top_k: int = 5,
+) -> SemanticSearchResponse:
+    use_case = SemanticSearchUseCase(
+        embedding_provider=OpenAIEmbeddingProvider(),
+        vector_store=vector_store,
+    )
+
+    try:
+        result = use_case.execute(
+            query=query,
+            top_k=top_k,
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        ) from exc
+
+    return SemanticSearchResponse(
+        query=query,
+        results=[
+            SemanticSearchItemResponse(
+                chunk_id=str(item.record.chunk_id),
+                symbol_id=str(item.record.symbol_id),
+                qualified_name=item.record.qualified_name,
+                relative_path=item.record.relative_path,
+                language=item.record.language,
+                symbol_kind=item.record.symbol_kind,
+                score=item.score,
+            )
+            for item in result.results
+        ],
+    )
+
+
+@router.get(
+    "/hybrid-search",
+    response_model=HybridSearchResponse,
+)
+def hybrid_search(
+    query: str,
+    use_case: Annotated[
+        HybridRetrievalUseCase,
+        Depends(get_hybrid_retrieval_use_case),
+    ],
+    top_k: int = 5,
+) -> HybridSearchResponse:
+    try:
+        result = use_case.execute(
+            query=query,
+            top_k=top_k,
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        ) from exc
+
+    return HybridSearchResponse(
+        query=query,
+        semantic_hits=[
+            HybridSemanticHitResponse(
+                symbol_id=str(hit.symbol.id),
+                qualified_name=hit.symbol.qualified_name,
+                kind=hit.symbol.kind.value,
+                score=hit.score,
+            )
+            for hit in result.semantic_hits
+        ],
+        expanded_symbols=[
+            HybridExpandedSymbolResponse(
+                symbol_id=str(item.symbol.id),
+                qualified_name=item.symbol.qualified_name,
+                kind=item.symbol.kind.value,
+                relation=item.relation,
+                source_symbol_id=item.source_symbol_id,
+            )
+            for item in result.expanded_symbols
+        ],
+    )
+
+
+@router.get(
+    "/hybrid-context",
+    response_model=HybridContextResponse,
+)
+def hybrid_context(
+    query: str,
+    hybrid_retrieval: Annotated[
+        HybridRetrievalUseCase,
+        Depends(get_hybrid_retrieval_use_case),
+    ],
+    context_builder: Annotated[
+        RetrievalContextBuilder,
+        Depends(get_retrieval_context_builder),
+    ],
+    top_k: int = 3,
+) -> HybridContextResponse:
+    try:
+        retrieval_result = hybrid_retrieval.execute(
+            query=query,
+            top_k=top_k,
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        ) from exc
+
+    context = context_builder.build(
+        retrieval_result=retrieval_result,
+    )
+    formatted_context = ContextFormatter().format(
+        context=context,
+    )
+
+    return HybridContextResponse(
+        query=query,
+        items=[
+            RetrievalContextItemResponse(
+                symbol_id=str(item.symbol_id),
+                qualified_name=item.qualified_name,
+                relative_path=item.chunk.relative_path,
+                language=item.chunk.language,
+                symbol_kind=item.chunk.symbol_kind,
+                semantic_score=item.semantic_score,
+                semantic_rank=item.semantic_rank,
+                graph_relations=list(item.graph_relations),
+                text=item.chunk.text,
+            )
+            for item in context.items
+        ],
+        formatted_context=formatted_context,
+    )
+
+
+@router.post(
+    "/ask",
+    response_model=AskRepositoryResponse,
+)
+def ask_repository(
+    request: AskRepositoryRequest,
+    use_case: Annotated[
+        AnswerRepositoryQuestionUseCase,
+        Depends(get_answer_repository_question_use_case),
+    ],
+) -> AskRepositoryResponse:
+    try:
+        result = use_case.execute(
+            question=request.question,
+            top_k=request.top_k,
+            max_items=request.max_items,
+            max_chars=request.max_chars,
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        ) from exc
+
+    return AskRepositoryResponse(
+        question=request.question,
+        answer=result.answer,
+        context_items=result.context_items,
+    )
+
+
+@router.post(
+    "/{snapshot_id}/index",
+    response_model=IndexSnapshotResponse,
+)
+def index_snapshot(
+    snapshot_id: UUID,
+    use_case: Annotated[
+        IndexSnapshotUseCase,
+        Depends(get_index_snapshot_use_case),
+    ],
+) -> IndexSnapshotResponse:
+    try:
+        result = use_case.execute(
+            snapshot_id=snapshot_id,
+        )
+    except IndexSnapshotNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from exc
+
+    return IndexSnapshotResponse(
+        snapshot_id=str(result.snapshot_id),
+        total_files=result.total_files,
+        indexed_files=result.indexed_files,
+        skipped_files=result.skipped_files,
+        indexed_chunks=result.indexed_chunks,
     )

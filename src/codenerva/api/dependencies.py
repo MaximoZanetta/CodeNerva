@@ -1,5 +1,8 @@
 from pathlib import Path
 
+from codenerva.infrastructure.in_memory_chunk_store import (
+    InMemoryChunkStore,
+)
 from codenerva.infrastructure.in_memory_import_reference_store import (
     InMemoryImportReferenceStore,
 )
@@ -24,6 +27,9 @@ from codenerva.infrastructure.in_memory_symbol_relation_store import (
 from codenerva.infrastructure.in_memory_symbol_store import (
     InMemorySymbolStore,
 )
+from codenerva.infrastructure.in_memory_vector_store import (
+    InMemoryVectorStore,
+)
 from codenerva.infrastructure.subprocess_git_client import (
     SubprocessGitClient,
 )
@@ -39,3 +45,5 @@ symbol_store = InMemorySymbolStore()
 symbol_relation_store = InMemorySymbolRelationStore()
 import_reference_store = InMemoryImportReferenceStore()
 source_file_relation_store = InMemorySourceFileRelationStore()
+vector_store = InMemoryVectorStore()
+chunk_store = InMemoryChunkStore()

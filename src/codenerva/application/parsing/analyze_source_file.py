@@ -185,6 +185,9 @@ class AnalyzeSourceFileUseCase:
                 source_file=source_file,
                 import_references=import_references,
                 snapshot_files=snapshot_files,
+                repository_path=(
+                    self._storage_root / "repositories" / str(snapshot.repository_id)
+                ),
             )
 
             self._source_file_relation_store.save_many(source_file_relations)

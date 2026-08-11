@@ -32,6 +32,9 @@ from codenerva.application.parsing.symbol_extractor_registry import (
 from codenerva.application.parsing.symbol_mapper import (
     SymbolMapper,
 )
+from codenerva.application.parsing.typescript_path_alias_resolver import (
+    TypeScriptPathAliasResolver,
+)
 from codenerva.domain.programming_language import ProgrammingLanguage
 from codenerva.domain.snapshot import Snapshot
 from codenerva.domain.source_file import SourceFile
@@ -131,6 +134,7 @@ class AuthService:
         source_file_relation_store=source_file_relation_store,
         build_source_file_relations_service=BuildSourceFileRelationsService(
             local_import_resolver=LocalImportResolver(),
+            typescript_path_alias_resolver=TypeScriptPathAliasResolver(),
         ),
         call_extractor_registry=CallExtractorRegistry(),
         build_call_relations_service=BuildCallRelationsService(

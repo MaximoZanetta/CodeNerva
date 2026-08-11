@@ -7,6 +7,9 @@ from codenerva.application.parsing.build_source_file_relations import (
 from codenerva.application.parsing.local_import_resolver import (
     LocalImportResolver,
 )
+from codenerva.application.parsing.typescript_path_alias_resolver import (
+    TypeScriptPathAliasResolver,
+)
 from codenerva.domain.import_reference import ImportReference
 from codenerva.domain.programming_language import ProgrammingLanguage
 from codenerva.domain.source_file import SourceFile
@@ -15,7 +18,7 @@ from codenerva.domain.source_file_relation import (
 )
 
 
-def test_build_import_relation_between_files() -> None:
+def test_build_import_relation_between_files(tmp_path) -> None:
     snapshot_id = uuid4()
 
     app_file = SourceFile.create(
@@ -44,6 +47,7 @@ def test_build_import_relation_between_files() -> None:
 
     service = BuildSourceFileRelationsService(
         local_import_resolver=LocalImportResolver(),
+        typescript_path_alias_resolver=TypeScriptPathAliasResolver(),
     )
 
     relations = service.build(
@@ -53,6 +57,7 @@ def test_build_import_relation_between_files() -> None:
             app_file,
             header_file,
         ),
+        repository_path=tmp_path,
     )
 
     assert len(relations) == 1

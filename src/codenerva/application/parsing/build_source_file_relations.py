@@ -1,7 +1,13 @@
+from pathlib import Path
+
 from codenerva.application.parsing.local_import_resolver import (
     LocalImportResolver,
 )
+from codenerva.application.parsing.typescript_path_alias_resolver import (
+    TypeScriptPathAliasResolver,
+)
 from codenerva.domain.import_reference import ImportReference
+from codenerva.domain.programming_language import ProgrammingLanguage
 from codenerva.domain.source_file import SourceFile
 from codenerva.domain.source_file_relation import (
     SourceFileRelation,
@@ -14,8 +20,10 @@ class BuildSourceFileRelationsService:
         self,
         *,
         local_import_resolver: LocalImportResolver,
+        typescript_path_alias_resolver: TypeScriptPathAliasResolver,
     ) -> None:
         self._local_import_resolver = local_import_resolver
+        self._typescript_path_alias_resolver = typescript_path_alias_resolver
 
     def build(
         self,
@@ -23,6 +31,7 @@ class BuildSourceFileRelationsService:
         source_file: SourceFile,
         import_references: tuple[ImportReference, ...],
         snapshot_files: tuple[SourceFile, ...],
+        repository_path: Path,
     ) -> tuple[SourceFileRelation, ...]:
         relations: list[SourceFileRelation] = []
 
@@ -32,6 +41,17 @@ class BuildSourceFileRelationsService:
                 import_reference=reference,
                 snapshot_files=snapshot_files,
             )
+
+            if target is None and source_file.language in {
+                ProgrammingLanguage.JAVASCRIPT,
+                ProgrammingLanguage.TYPESCRIPT,
+                ProgrammingLanguage.TSX,
+            }:
+                target = self._typescript_path_alias_resolver.resolve(
+                    module=reference.module,
+                    repository_path=repository_path,
+                    snapshot_files=snapshot_files,
+                )
 
             if target is None:
                 continue
