@@ -37,3 +37,18 @@ class InMemorySourceFileStore(SourceFileStore):
         source_file_id: UUID,
     ) -> SourceFile | None:
         return self._source_files.get(source_file_id)
+
+    def delete_by_snapshot_id(
+        self,
+        snapshot_id: UUID,
+    ) -> int:
+        source_file_ids = [
+            source_file_id
+            for source_file_id, source_file in self._source_files.items()
+            if source_file.snapshot_id == snapshot_id
+        ]
+
+        for source_file_id in source_file_ids:
+            del self._source_files[source_file_id]
+
+        return len(source_file_ids)

@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import delete, or_, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from codenerva.domain.source_file_relation import (
@@ -83,3 +83,23 @@ class PostgresSourceFileRelationStore(SourceFileRelationStore):
             target_file_id=model.target_file_id,
             kind=SourceFileRelationKind(model.kind),
         )
+
+    def delete_by_source_file_ids(
+        self,
+        source_file_ids: tuple[UUID, ...],
+    ) -> int:
+        if not source_file_ids:
+            return 0
+
+        with self._session_factory() as session:
+            statement = delete(SourceFileRelationModel).where(
+                or_(
+                    SourceFileRelationModel.source_file_id.in_(source_file_ids),
+                    SourceFileRelationModel.target_file_id.in_(source_file_ids),
+                )
+            )
+
+            result = session.execute(statement)
+            session.commit()
+
+            return result.rowcount or 0

@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import delete, or_, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from codenerva.domain.symbol_relation import (
@@ -83,3 +83,23 @@ class PostgresSymbolRelationStore(SymbolRelationStore):
             target_symbol_id=model.target_symbol_id,
             kind=SymbolRelationKind(model.kind),
         )
+
+    def delete_by_symbol_ids(
+        self,
+        symbol_ids: tuple[UUID, ...],
+    ) -> int:
+        if not symbol_ids:
+            return 0
+
+        with self._session_factory() as session:
+            statement = delete(SymbolRelationModel).where(
+                or_(
+                    SymbolRelationModel.source_symbol_id.in_(symbol_ids),
+                    SymbolRelationModel.target_symbol_id.in_(symbol_ids),
+                )
+            )
+
+            result = session.execute(statement)
+            session.commit()
+
+            return result.rowcount or 0

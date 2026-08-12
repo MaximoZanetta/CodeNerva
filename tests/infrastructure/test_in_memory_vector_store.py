@@ -164,3 +164,49 @@ def test_search_filters_by_snapshot() -> None:
 
     assert len(results) == 1
     assert results[0].record.snapshot_id == first_snapshot_id
+
+
+def test_delete_by_snapshot_id() -> None:
+    store = InMemoryVectorStore()
+
+    first_snapshot_id = uuid4()
+    second_snapshot_id = uuid4()
+
+    first = VectorRecord(
+        chunk_id=uuid4(),
+        vector=(1.0, 0.0),
+        snapshot_id=first_snapshot_id,
+        source_file_id=uuid4(),
+        symbol_id=uuid4(),
+        relative_path="first.py",
+        language="python",
+        qualified_name="first",
+        symbol_kind="FUNCTION",
+    )
+
+    second = VectorRecord(
+        chunk_id=uuid4(),
+        vector=(0.0, 1.0),
+        snapshot_id=second_snapshot_id,
+        source_file_id=uuid4(),
+        symbol_id=uuid4(),
+        relative_path="second.py",
+        language="python",
+        qualified_name="second",
+        symbol_kind="FUNCTION",
+    )
+
+    store.save_many(
+        (
+            first,
+            second,
+        )
+    )
+
+    deleted = store.delete_by_snapshot_id(first_snapshot_id)
+
+    assert deleted == 1
+
+    assert store.get_by_chunk_id(first.chunk_id) is None
+
+    assert store.get_by_chunk_id(second.chunk_id) == second

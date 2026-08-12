@@ -19,3 +19,8 @@ class ChunkStore(Protocol):
         self,
         symbol_id: UUID,
     ) -> tuple[Chunk, ...]: ...
+
+    def delete_by_snapshot_id(
+        self,
+        snapshot_id: UUID,
+    ) -> int: ...

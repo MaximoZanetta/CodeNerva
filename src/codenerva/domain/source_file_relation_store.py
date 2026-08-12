@@ -19,3 +19,8 @@ class SourceFileRelationStore(Protocol):
         self,
         target_file_id: UUID,
     ) -> tuple[SourceFileRelation, ...]: ...
+
+    def delete_by_source_file_ids(
+        self,
+        source_file_ids: tuple[UUID, ...],
+    ) -> int: ...

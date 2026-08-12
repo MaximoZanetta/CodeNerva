@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from codenerva.domain.chunk import Chunk, ChunkKind
@@ -100,3 +100,15 @@ class PostgresChunkStore(ChunkStore):
             part_count=model.part_count,
             code=model.code,
         )
+
+    def delete_by_snapshot_id(
+        self,
+        snapshot_id: UUID,
+    ) -> int:
+        with self._session_factory() as session:
+            statement = delete(ChunkModel).where(ChunkModel.snapshot_id == snapshot_id)
+
+            result = session.execute(statement)
+            session.commit()
+
+            return result.rowcount or 0

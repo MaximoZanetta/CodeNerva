@@ -28,3 +28,18 @@ class InMemoryChunkStore(ChunkStore):
         return tuple(
             chunk for chunk in self._chunks.values() if chunk.symbol_id == symbol_id
         )
+
+    def delete_by_snapshot_id(
+        self,
+        snapshot_id: UUID,
+    ) -> int:
+        chunk_ids = [
+            chunk_id
+            for chunk_id, chunk in self._chunks.items()
+            if chunk.snapshot_id == snapshot_id
+        ]
+
+        for chunk_id in chunk_ids:
+            del self._chunks[chunk_id]
+
+        return len(chunk_ids)

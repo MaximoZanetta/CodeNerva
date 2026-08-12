@@ -36,3 +36,20 @@ class InMemorySourceFileRelationStore(SourceFileRelationStore):
             for relation in self._relations.values()
             if relation.target_file_id == target_file_id
         )
+
+    def delete_by_source_file_ids(
+        self,
+        source_file_ids: tuple[UUID, ...],
+    ) -> int:
+        ids = set(source_file_ids)
+
+        relation_ids = [
+            relation_id
+            for relation_id, relation in self._relations.items()
+            if relation.source_file_id in ids or relation.target_file_id in ids
+        ]
+
+        for relation_id in relation_ids:
+            del self._relations[relation_id]
+
+        return len(relation_ids)

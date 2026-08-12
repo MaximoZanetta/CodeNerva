@@ -14,3 +14,8 @@ class ImportReferenceStore(Protocol):
         self,
         source_file_id: UUID,
     ) -> tuple[ImportReference, ...]: ...
+
+    def delete_by_source_file_ids(
+        self,
+        source_file_ids: tuple[UUID, ...],
+    ) -> int: ...

@@ -169,3 +169,41 @@ class QdrantVectorStore(VectorStore):
                 distance=models.Distance.COSINE,
             ),
         )
+
+    def delete_by_snapshot_id(
+        self,
+        snapshot_id: UUID,
+    ) -> int:
+        snapshot_filter = models.Filter(
+            must=[
+                models.FieldCondition(
+                    key="snapshot_id",
+                    match=models.MatchValue(
+                        value=str(snapshot_id),
+                    ),
+                )
+            ]
+        )
+
+        points, _ = self._client.scroll(
+            collection_name=self._collection_name,
+            scroll_filter=snapshot_filter,
+            limit=10_000,
+            with_payload=False,
+            with_vectors=False,
+        )
+
+        deleted_count = len(points)
+
+        if deleted_count == 0:
+            return 0
+
+        self._client.delete(
+            collection_name=self._collection_name,
+            points_selector=models.FilterSelector(
+                filter=snapshot_filter,
+            ),
+            wait=True,
+        )
+
+        return deleted_count

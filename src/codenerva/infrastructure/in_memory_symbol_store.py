@@ -40,3 +40,20 @@ class InMemorySymbolStore(SymbolStore):
                 ),
             )
         )
+
+    def delete_by_source_file_ids(
+        self,
+        source_file_ids: tuple[UUID, ...],
+    ) -> int:
+        ids = set(source_file_ids)
+
+        symbol_ids = [
+            symbol_id
+            for symbol_id, symbol in self._symbols.items()
+            if symbol.source_file_id in ids
+        ]
+
+        for symbol_id in symbol_ids:
+            del self._symbols[symbol_id]
+
+        return len(symbol_ids)

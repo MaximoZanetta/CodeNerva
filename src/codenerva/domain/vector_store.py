@@ -23,3 +23,8 @@ class VectorStore(Protocol):
         top_k: int,
         snapshot_id: UUID,
     ) -> tuple[VectorSearchResult, ...]: ...
+
+    def delete_by_snapshot_id(
+        self,
+        snapshot_id: UUID,
+    ) -> int: ...

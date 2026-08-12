@@ -14,3 +14,8 @@ class SnapshotStore(Protocol):
         repository_id: UUID,
         commit_sha: str,
     ) -> Snapshot | None: ...
+
+    def delete(
+        self,
+        snapshot_id: UUID,
+    ) -> bool: ...

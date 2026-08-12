@@ -117,6 +117,9 @@ from codenerva.application.parsing.typescript_path_alias_resolver import (
 from codenerva.application.qa.answer_repository_question import (
     AnswerRepositoryQuestionUseCase,
 )
+from codenerva.application.qa.answer_repository_question import (
+    SnapshotNotFoundError as AskSnapshotNotFoundError,
+)
 from codenerva.application.retrieval.context_formatter import (
     ContextFormatter,
 )
@@ -136,6 +139,12 @@ from codenerva.application.snapshots.build_incremental_index_plan import (
 from codenerva.application.snapshots.compare_snapshots import CompareSnapshotsUseCase
 from codenerva.application.snapshots.incremental_index_snapshot import (
     IncrementalIndexSnapshotUseCase,
+)
+from codenerva.application.snapshots.purge_snapshot import (
+    PurgeSnapshotUseCase,
+)
+from codenerva.application.snapshots.purge_snapshot import (
+    SnapshotNotFoundError as PurgeSnapshotNotFoundError,
 )
 from codenerva.application.snapshots.reuse_cross_file_relations import (
     ReuseCrossFileRelationsUseCase,
@@ -415,6 +424,18 @@ class IncrementalIndexSnapshotResponse(BaseModel):
     indexed_chunks: int
 
 
+class PurgeSnapshotResponse(BaseModel):
+    snapshot_id: str
+    deleted_vectors: int
+    deleted_symbol_relations: int
+    deleted_source_file_relations: int
+    deleted_import_references: int
+    deleted_chunks: int
+    deleted_symbols: int
+    deleted_source_files: int
+    snapshot_deleted: bool
+
+
 def get_discover_snapshot_files_use_case() -> DiscoverSnapshotFilesUseCase:
     return DiscoverSnapshotFilesUseCase(
         snapshot_store=snapshot_store,
@@ -589,6 +610,7 @@ def get_answer_repository_question_use_case() -> AnswerRepositoryQuestionUseCase
         ),
         context_formatter=ContextFormatter(),
         llm_provider=OpenAILLMProvider(),
+        snapshot_store=snapshot_store,
     )
 
 
@@ -640,6 +662,19 @@ def get_incremental_index_snapshot_use_case() -> IncrementalIndexSnapshotUseCase
         chunk_store=chunk_store,
         embed_chunks_use_case=embed_chunks_use_case,
         storage_root=storage_root,
+    )
+
+
+def get_purge_snapshot_use_case() -> PurgeSnapshotUseCase:
+    return PurgeSnapshotUseCase(
+        snapshot_store=snapshot_store,
+        source_file_store=source_file_store,
+        symbol_store=symbol_store,
+        symbol_relation_store=symbol_relation_store,
+        source_file_relation_store=source_file_relation_store,
+        import_reference_store=import_reference_store,
+        chunk_store=chunk_store,
+        vector_store=vector_store,
     )
 
 
@@ -1303,9 +1338,9 @@ def ask_repository(
             max_items=request.max_items,
             max_chars=request.max_chars,
         )
-    except ValueError as exc:
+    except AskSnapshotNotFoundError as exc:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_404_NOT_FOUND,
             detail=str(exc),
         ) from exc
 
@@ -1376,4 +1411,38 @@ def incremental_index_snapshot(
         reused_chunks=result.reused_chunks,
         reused_vectors=result.reused_vectors,
         indexed_chunks=result.indexed_chunks,
+    )
+
+
+@router.delete(
+    "/{snapshot_id}",
+    response_model=PurgeSnapshotResponse,
+)
+def purge_snapshot(
+    snapshot_id: UUID,
+    use_case: Annotated[
+        PurgeSnapshotUseCase,
+        Depends(get_purge_snapshot_use_case),
+    ],
+) -> PurgeSnapshotResponse:
+    try:
+        result = use_case.execute(
+            snapshot_id=snapshot_id,
+        )
+    except PurgeSnapshotNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from exc
+
+    return PurgeSnapshotResponse(
+        snapshot_id=str(result.snapshot_id),
+        deleted_vectors=result.deleted_vectors,
+        deleted_symbol_relations=(result.deleted_symbol_relations),
+        deleted_source_file_relations=(result.deleted_source_file_relations),
+        deleted_import_references=(result.deleted_import_references),
+        deleted_chunks=result.deleted_chunks,
+        deleted_symbols=result.deleted_symbols,
+        deleted_source_files=(result.deleted_source_files),
+        snapshot_deleted=result.snapshot_deleted,
     )

@@ -19,3 +19,8 @@ class SymbolRelationStore(Protocol):
         self,
         target_symbol_id: UUID,
     ) -> tuple[SymbolRelation, ...]: ...
+
+    def delete_by_symbol_ids(
+        self,
+        symbol_ids: tuple[UUID, ...],
+    ) -> int: ...

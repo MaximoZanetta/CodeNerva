@@ -14,6 +14,11 @@ from codenerva.application.retrieval.retrieval_context_builder import (
     RetrievalContextBuilder,
 )
 from codenerva.domain.llm_provider import LLMProvider
+from codenerva.domain.snapshot_store import SnapshotStore
+
+
+class SnapshotNotFoundError(Exception):
+    pass
 
 
 @dataclass(frozen=True, slots=True)
@@ -31,12 +36,14 @@ class AnswerRepositoryQuestionUseCase:
         context_formatter: ContextFormatter,
         llm_provider: LLMProvider,
         hybrid_reranker: HybridReranker,
+        snapshot_store: SnapshotStore,
     ) -> None:
         self._hybrid_retrieval = hybrid_retrieval
         self._context_builder = context_builder
         self._context_formatter = context_formatter
         self._llm_provider = llm_provider
         self._hybrid_reranker = hybrid_reranker
+        self._snapshot_store = snapshot_store
 
     def execute(
         self,
@@ -49,6 +56,12 @@ class AnswerRepositoryQuestionUseCase:
     ) -> AnswerRepositoryQuestionResult:
         if not question.strip():
             raise ValueError("question cannot be empty.")
+        snapshot = self._snapshot_store.get_by_id(snapshot_id)
+
+        if snapshot is None:
+            raise SnapshotNotFoundError(
+                f"Snapshot with id {snapshot_id} was not found."
+            )
 
         retrieval_result = self._hybrid_retrieval.execute(
             snapshot_id=snapshot_id,

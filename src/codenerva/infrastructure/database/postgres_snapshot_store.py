@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from codenerva.domain.snapshot import (
@@ -83,3 +83,15 @@ class PostgresSnapshotStore(SnapshotStore):
             remote_url=model.remote_url,
             status=SnapshotStatus(model.status),
         )
+
+    def delete(
+        self,
+        snapshot_id: UUID,
+    ) -> bool:
+        with self._session_factory() as session:
+            statement = delete(SnapshotModel).where(SnapshotModel.id == snapshot_id)
+
+            result = session.execute(statement)
+            session.commit()
+
+            return bool(result.rowcount)

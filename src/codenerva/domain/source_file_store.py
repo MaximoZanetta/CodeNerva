@@ -19,3 +19,8 @@ class SourceFileStore(Protocol):
         self,
         source_file_id: UUID,
     ) -> SourceFile | None: ...
+
+    def delete_by_snapshot_id(
+        self,
+        snapshot_id: UUID,
+    ) -> int: ...

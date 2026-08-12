@@ -1,7 +1,7 @@
 from pathlib import PurePosixPath
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from codenerva.domain.programming_language import ProgrammingLanguage
@@ -84,3 +84,17 @@ class PostgresSourceFileStore(SourceFileStore):
             size_bytes=model.size_bytes,
             content_hash=model.content_hash,
         )
+
+    def delete_by_snapshot_id(
+        self,
+        snapshot_id: UUID,
+    ) -> int:
+        with self._session_factory() as session:
+            statement = delete(SourceFileModel).where(
+                SourceFileModel.snapshot_id == snapshot_id
+            )
+
+            result = session.execute(statement)
+            session.commit()
+
+            return result.rowcount or 0

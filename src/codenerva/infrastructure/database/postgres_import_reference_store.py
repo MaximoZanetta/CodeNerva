@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from codenerva.domain.import_reference import ImportReference
@@ -72,3 +72,20 @@ class PostgresImportReferenceStore(ImportReferenceStore):
             alias=model.alias,
             line=model.line,
         )
+
+    def delete_by_source_file_ids(
+        self,
+        source_file_ids: tuple[UUID, ...],
+    ) -> int:
+        if not source_file_ids:
+            return 0
+
+        with self._session_factory() as session:
+            statement = delete(ImportReferenceModel).where(
+                ImportReferenceModel.source_file_id.in_(source_file_ids)
+            )
+
+            result = session.execute(statement)
+            session.commit()
+
+            return result.rowcount or 0

@@ -82,3 +82,18 @@ class InMemoryVectorStore(VectorStore):
             return 0.0
 
         return dot_product / (first_norm * second_norm)
+
+    def delete_by_snapshot_id(
+        self,
+        snapshot_id: UUID,
+    ) -> int:
+        chunk_ids_to_delete = [
+            chunk_id
+            for chunk_id, record in self._records.items()
+            if record.snapshot_id == snapshot_id
+        ]
+
+        for chunk_id in chunk_ids_to_delete:
+            del self._records[chunk_id]
+
+        return len(chunk_ids_to_delete)

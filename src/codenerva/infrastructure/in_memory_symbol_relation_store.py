@@ -36,3 +36,20 @@ class InMemorySymbolRelationStore(SymbolRelationStore):
             for relation in self._relations.values()
             if relation.target_symbol_id == target_symbol_id
         )
+
+    def delete_by_symbol_ids(
+        self,
+        symbol_ids: tuple[UUID, ...],
+    ) -> int:
+        ids = set(symbol_ids)
+
+        relation_ids = [
+            relation_id
+            for relation_id, relation in self._relations.items()
+            if relation.source_symbol_id in ids or relation.target_symbol_id in ids
+        ]
+
+        for relation_id in relation_ids:
+            del self._relations[relation_id]
+
+        return len(relation_ids)

@@ -28,3 +28,14 @@ class InMemorySnapshotStore(SnapshotStore):
             ),
             None,
         )
+
+    def delete(
+        self,
+        snapshot_id: UUID,
+    ) -> bool:
+        if snapshot_id not in self._snapshots:
+            return False
+
+        del self._snapshots[snapshot_id]
+
+        return True
