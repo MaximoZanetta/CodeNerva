@@ -130,6 +130,19 @@ from codenerva.application.retrieval.retrieval_context_builder import (
 from codenerva.application.retrieval.semantic_search import (
     SemanticSearchUseCase,
 )
+from codenerva.application.snapshots.build_incremental_index_plan import (
+    BuildIncrementalIndexPlanUseCase,
+)
+from codenerva.application.snapshots.compare_snapshots import CompareSnapshotsUseCase
+from codenerva.application.snapshots.incremental_index_snapshot import (
+    IncrementalIndexSnapshotUseCase,
+)
+from codenerva.application.snapshots.reuse_cross_file_relations import (
+    ReuseCrossFileRelationsUseCase,
+)
+from codenerva.application.snapshots.reuse_unchanged_file import (
+    ReuseUnchangedFileUseCase,
+)
 from codenerva.application.source.discover_snapshot_files import (
     DiscoverSnapshotFilesUseCase,
 )
@@ -382,6 +395,26 @@ class IndexSnapshotResponse(BaseModel):
     indexed_chunks: int
 
 
+class IncrementalIndexSnapshotRequest(BaseModel):
+    previous_snapshot_id: UUID
+    current_snapshot_id: UUID
+
+
+class IncrementalIndexSnapshotResponse(BaseModel):
+    previous_snapshot_id: str
+    current_snapshot_id: str
+    reused_files: int
+    analyzed_files: int
+    skipped_files: int
+    deleted_files: int
+    reused_symbols: int
+    reused_symbol_relations: int
+    reused_source_file_relations: int
+    reused_chunks: int
+    reused_vectors: int
+    indexed_chunks: int
+
+
 def get_discover_snapshot_files_use_case() -> DiscoverSnapshotFilesUseCase:
     return DiscoverSnapshotFilesUseCase(
         snapshot_store=snapshot_store,
@@ -572,6 +605,39 @@ def get_index_snapshot_use_case() -> IndexSnapshotUseCase:
         symbol_store=symbol_store,
         chunk_store=chunk_store,
         symbol_chunker=SymbolChunker(),
+        embed_chunks_use_case=embed_chunks_use_case,
+        storage_root=storage_root,
+    )
+
+
+def get_incremental_index_snapshot_use_case() -> IncrementalIndexSnapshotUseCase:
+    embed_chunks_use_case = EmbedChunksUseCase(
+        embedding_provider=OpenAIEmbeddingProvider(),
+        vector_store=vector_store,
+        vector_record_mapper=VectorRecordMapper(),
+    )
+
+    return IncrementalIndexSnapshotUseCase(
+        source_file_store=source_file_store,
+        compare_snapshots_use_case=CompareSnapshotsUseCase(
+            source_file_store=source_file_store,
+        ),
+        build_plan_use_case=BuildIncrementalIndexPlanUseCase(),
+        reuse_unchanged_file_use_case=ReuseUnchangedFileUseCase(
+            symbol_store=symbol_store,
+            symbol_relation_store=symbol_relation_store,
+            chunk_store=chunk_store,
+            vector_store=vector_store,
+        ),
+        reuse_cross_file_relations_use_case=ReuseCrossFileRelationsUseCase(
+            symbol_store=symbol_store,
+            symbol_relation_store=symbol_relation_store,
+            source_file_relation_store=source_file_relation_store,
+        ),
+        analyze_source_file_use_case=get_analyze_source_file_use_case(),
+        snapshot_store=snapshot_store,
+        symbol_chunker=SymbolChunker(),
+        chunk_store=chunk_store,
         embed_chunks_use_case=embed_chunks_use_case,
         storage_root=storage_root,
     )
@@ -1277,5 +1343,37 @@ def index_snapshot(
         total_files=result.total_files,
         indexed_files=result.indexed_files,
         skipped_files=result.skipped_files,
+        indexed_chunks=result.indexed_chunks,
+    )
+
+
+@router.post(
+    "/incremental-index",
+    response_model=IncrementalIndexSnapshotResponse,
+)
+def incremental_index_snapshot(
+    request: IncrementalIndexSnapshotRequest,
+    use_case: Annotated[
+        IncrementalIndexSnapshotUseCase,
+        Depends(get_incremental_index_snapshot_use_case),
+    ],
+) -> IncrementalIndexSnapshotResponse:
+    result = use_case.execute(
+        previous_snapshot_id=request.previous_snapshot_id,
+        current_snapshot_id=request.current_snapshot_id,
+    )
+
+    return IncrementalIndexSnapshotResponse(
+        previous_snapshot_id=str(result.previous_snapshot_id),
+        current_snapshot_id=str(result.current_snapshot_id),
+        reused_files=result.reused_files,
+        analyzed_files=result.analyzed_files,
+        skipped_files=result.skipped_files,
+        deleted_files=result.deleted_files,
+        reused_symbols=result.reused_symbols,
+        reused_symbol_relations=(result.reused_symbol_relations),
+        reused_source_file_relations=(result.reused_source_file_relations),
+        reused_chunks=result.reused_chunks,
+        reused_vectors=result.reused_vectors,
         indexed_chunks=result.indexed_chunks,
     )

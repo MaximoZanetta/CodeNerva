@@ -796,7 +796,7 @@ CodeNerva is currently a development-stage prototype and is not yet intended for
 - [x] Qdrant vector persistence
 - [x] Snapshot-scoped vector retrieval
 - [x] Repository QA across application restarts
-- [ ] Incremental indexing
+- [x] Incremental indexing
 - [ ] Snapshot-aware vector lifecycle
 - [ ] Database migrations
 - [ ] Docker environment
@@ -815,7 +815,7 @@ CodeNerva is currently a development-stage prototype and is not yet intended for
 ### Retrieval & Evaluation
 
 - [ ] Incremental embedding generation
-- [ ] Reuse unchanged files through content hashes
+- [x] Reuse unchanged files through content hashes
 - [ ] Retrieval evaluation dataset
 - [ ] Retrieval quality benchmarks
 - [ ] Larger repository evaluation
