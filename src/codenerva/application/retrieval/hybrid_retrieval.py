@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from uuid import UUID
 
 from codenerva.application.graph.graph_query_service import (
     GraphQueryService,
@@ -44,10 +45,12 @@ class HybridRetrievalUseCase:
         self,
         *,
         query: str,
+        snapshot_id: UUID,
         top_k: int = 5,
     ) -> HybridRetrievalResult:
         semantic_result = self._semantic_search.execute(
             query=query,
+            snapshot_id=snapshot_id,
             top_k=top_k,
         )
 

@@ -143,6 +143,7 @@ def test_hybrid_retrieval_expands_semantic_hit_with_graph() -> None:
     )
 
     result = use_case.execute(
+        snapshot_id=snapshot_id,
         query=query,
         top_k=1,
     )

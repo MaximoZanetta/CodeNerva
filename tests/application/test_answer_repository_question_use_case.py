@@ -1,4 +1,4 @@
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from codenerva.application.qa.answer_repository_question import (
     AnswerRepositoryQuestionUseCase,
@@ -36,6 +36,7 @@ class FakeHybridRetrievalUseCase:
         self,
         *,
         query: str,
+        snapshot_id: UUID,
         top_k: int = 3,
     ) -> HybridRetrievalResult:
         return self._result
@@ -104,8 +105,9 @@ def test_answer_repository_question_uses_retrieved_context() -> None:
         context_formatter=ContextFormatter(),
         llm_provider=llm_provider,
     )
-
+    snapshot_id = uuid4()
     result = use_case.execute(
+        snapshot_id=snapshot_id,
         question="Where is user input validated?",
         top_k=3,
         max_items=6,
@@ -145,5 +147,6 @@ def test_answer_repository_question_rejects_empty_question() -> None:
 
     with pytest.raises(ValueError):
         use_case.execute(
+            snapshot_id=uuid4(),
             question="   ",
         )

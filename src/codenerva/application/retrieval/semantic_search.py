@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from uuid import UUID
 
 from codenerva.domain.embedding_provider import EmbeddingProvider
 from codenerva.domain.vector_search_result import VectorSearchResult
@@ -24,6 +25,7 @@ class SemanticSearchUseCase:
         self,
         *,
         query: str,
+        snapshot_id: UUID,
         top_k: int = 5,
     ) -> SemanticSearchResult:
         if not query.strip():
@@ -39,6 +41,7 @@ class SemanticSearchUseCase:
         results = self._vector_store.search(
             query_vector=query_vector,
             top_k=top_k,
+            snapshot_id=snapshot_id,
         )
 
         return SemanticSearchResult(

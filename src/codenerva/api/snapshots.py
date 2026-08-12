@@ -360,6 +360,7 @@ class HybridContextResponse(BaseModel):
 
 
 class AskRepositoryRequest(BaseModel):
+    snapshot_id: UUID
     question: str
     top_k: int = 3
     max_items: int = 6
@@ -367,6 +368,7 @@ class AskRepositoryRequest(BaseModel):
 
 
 class AskRepositoryResponse(BaseModel):
+    snapshot_id: str
     question: str
     answer: str
     context_items: int
@@ -1117,6 +1119,7 @@ def semantic_search(
 )
 def hybrid_search(
     query: str,
+    snapshot_id: UUID,
     use_case: Annotated[
         HybridRetrievalUseCase,
         Depends(get_hybrid_retrieval_use_case),
@@ -1125,6 +1128,7 @@ def hybrid_search(
 ) -> HybridSearchResponse:
     try:
         result = use_case.execute(
+            snapshot_id=snapshot_id,
             query=query,
             top_k=top_k,
         )
@@ -1163,6 +1167,7 @@ def hybrid_search(
     response_model=HybridContextResponse,
 )
 def hybrid_context(
+    snapshot_id: UUID,
     query: str,
     hybrid_retrieval: Annotated[
         HybridRetrievalUseCase,
@@ -1177,6 +1182,7 @@ def hybrid_context(
     try:
         retrieval_result = hybrid_retrieval.execute(
             query=query,
+            snapshot_id=snapshot_id,
             top_k=top_k,
         )
     except ValueError as exc:
@@ -1225,6 +1231,7 @@ def ask_repository(
 ) -> AskRepositoryResponse:
     try:
         result = use_case.execute(
+            snapshot_id=request.snapshot_id,
             question=request.question,
             top_k=request.top_k,
             max_items=request.max_items,
@@ -1237,6 +1244,7 @@ def ask_repository(
         ) from exc
 
     return AskRepositoryResponse(
+        snapshot_id=str(request.snapshot_id),
         question=request.question,
         answer=result.answer,
         context_items=result.context_items,

@@ -21,4 +21,5 @@ class VectorStore(Protocol):
         *,
         query_vector: tuple[float, ...],
         top_k: int,
+        snapshot_id: UUID,
     ) -> tuple[VectorSearchResult, ...]: ...

@@ -26,14 +26,14 @@ def test_semantic_search_returns_results() -> None:
         "send message",
         "render header",
     )
-
+    snapshot_id = uuid4()
     vectors = embedding_provider.embed(texts)
 
     records = tuple(
         VectorRecord(
             chunk_id=uuid4(),
             vector=vector,
-            snapshot_id=uuid4(),
+            snapshot_id=snapshot_id,
             source_file_id=uuid4(),
             symbol_id=uuid4(),
             relative_path=f"{index}.js",
@@ -59,6 +59,7 @@ def test_semantic_search_returns_results() -> None:
 
     result = use_case.execute(
         query="validate user input",
+        snapshot_id=snapshot_id,
         top_k=2,
     )
 
@@ -81,6 +82,7 @@ def test_semantic_search_rejects_empty_query() -> None:
 
     with pytest.raises(ValueError):
         use_case.execute(
+            snapshot_id=uuid4(),
             query="   ",
         )
 
@@ -97,6 +99,7 @@ def test_semantic_search_rejects_invalid_top_k() -> None:
 
     with pytest.raises(ValueError):
         use_case.execute(
+            snapshot_id=uuid4(),
             query="login",
             top_k=0,
         )

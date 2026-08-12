@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from uuid import UUID
 
 from codenerva.application.retrieval.context_formatter import (
     ContextFormatter,
@@ -40,6 +41,7 @@ class AnswerRepositoryQuestionUseCase:
     def execute(
         self,
         *,
+        snapshot_id: UUID,
         question: str,
         top_k: int = 3,
         max_items: int = 6,
@@ -49,6 +51,7 @@ class AnswerRepositoryQuestionUseCase:
             raise ValueError("question cannot be empty.")
 
         retrieval_result = self._hybrid_retrieval.execute(
+            snapshot_id=snapshot_id,
             query=question,
             top_k=top_k,
         )

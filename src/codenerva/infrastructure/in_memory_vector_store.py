@@ -28,6 +28,7 @@ class InMemoryVectorStore(VectorStore):
         *,
         query_vector: tuple[float, ...],
         top_k: int,
+        snapshot_id: UUID,
     ) -> tuple[VectorSearchResult, ...]:
         if top_k <= 0:
             raise ValueError("top_k must be positive.")
@@ -35,30 +36,29 @@ class InMemoryVectorStore(VectorStore):
         if not query_vector:
             raise ValueError("query_vector cannot be empty.")
 
-        results: list[VectorSearchResult] = []
+        candidates = tuple(
+            record
+            for record in self._records.values()
+            if record.snapshot_id == snapshot_id
+        )
 
-        for record in self._records.values():
-            if len(record.vector) != len(query_vector):
-                continue
-
-            score = self._cosine_similarity(
-                query_vector,
-                record.vector,
+        scored = [
+            VectorSearchResult(
+                record=record,
+                score=self._cosine_similarity(
+                    query_vector,
+                    record.vector,
+                ),
             )
+            for record in candidates
+        ]
 
-            results.append(
-                VectorSearchResult(
-                    record=record,
-                    score=score,
-                )
-            )
-
-        results.sort(
+        scored.sort(
             key=lambda result: result.score,
             reverse=True,
         )
 
-        return tuple(results[:top_k])
+        return tuple(scored[:top_k])
 
     def _cosine_similarity(
         self,

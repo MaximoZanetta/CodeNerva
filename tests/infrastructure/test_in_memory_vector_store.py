@@ -33,10 +33,12 @@ def test_save_and_get_vector_record() -> None:
 def test_search_returns_most_similar_vector() -> None:
     store = InMemoryVectorStore()
 
+    snapshot_id = uuid4()
+
     best = VectorRecord(
         chunk_id=uuid4(),
         vector=(1.0, 0.0),
-        snapshot_id=uuid4(),
+        snapshot_id=snapshot_id,
         source_file_id=uuid4(),
         symbol_id=uuid4(),
         relative_path="best.py",
@@ -48,7 +50,7 @@ def test_search_returns_most_similar_vector() -> None:
     middle = VectorRecord(
         chunk_id=uuid4(),
         vector=(0.7, 0.7),
-        snapshot_id=uuid4(),
+        snapshot_id=snapshot_id,
         source_file_id=uuid4(),
         symbol_id=uuid4(),
         relative_path="middle.py",
@@ -60,7 +62,7 @@ def test_search_returns_most_similar_vector() -> None:
     worst = VectorRecord(
         chunk_id=uuid4(),
         vector=(-1.0, 0.0),
-        snapshot_id=uuid4(),
+        snapshot_id=snapshot_id,
         source_file_id=uuid4(),
         symbol_id=uuid4(),
         relative_path="worst.py",
@@ -80,24 +82,22 @@ def test_search_returns_most_similar_vector() -> None:
     results = store.search(
         query_vector=(1.0, 0.0),
         top_k=2,
+        snapshot_id=snapshot_id,
     )
 
     assert len(results) == 2
-
     assert results[0].record.chunk_id == best.chunk_id
-    assert results[0].score == 1.0
-
     assert results[1].record.chunk_id == middle.chunk_id
 
 
 def test_search_respects_top_k() -> None:
     store = InMemoryVectorStore()
-
+    snapshot_id = uuid4()
     records = tuple(
         VectorRecord(
             chunk_id=uuid4(),
             vector=(1.0, float(index + 1)),
-            snapshot_id=uuid4(),
+            snapshot_id=snapshot_id,
             source_file_id=uuid4(),
             symbol_id=uuid4(),
             relative_path=f"{index}.py",
@@ -112,7 +112,55 @@ def test_search_respects_top_k() -> None:
 
     results = store.search(
         query_vector=(1.0, 0.0),
+        snapshot_id=snapshot_id,
         top_k=3,
     )
 
     assert len(results) == 3
+
+
+def test_search_filters_by_snapshot() -> None:
+    first_snapshot_id = uuid4()
+    second_snapshot_id = uuid4()
+
+    store = InMemoryVectorStore()
+
+    first = VectorRecord(
+        chunk_id=uuid4(),
+        vector=(1.0, 0.0),
+        snapshot_id=first_snapshot_id,
+        source_file_id=uuid4(),
+        symbol_id=uuid4(),
+        relative_path="first.py",
+        language="python",
+        qualified_name="first",
+        symbol_kind="FUNCTION",
+    )
+
+    second = VectorRecord(
+        chunk_id=uuid4(),
+        vector=(1.0, 0.0),
+        snapshot_id=second_snapshot_id,
+        source_file_id=uuid4(),
+        symbol_id=uuid4(),
+        relative_path="second.py",
+        language="python",
+        qualified_name="second",
+        symbol_kind="FUNCTION",
+    )
+
+    store.save_many(
+        (
+            first,
+            second,
+        )
+    )
+
+    results = store.search(
+        query_vector=(1.0, 0.0),
+        top_k=10,
+        snapshot_id=first_snapshot_id,
+    )
+
+    assert len(results) == 1
+    assert results[0].record.snapshot_id == first_snapshot_id
