@@ -1,13 +1,6 @@
-from dataclasses import dataclass
-
 from tree_sitter import Node, Tree
 
-
-@dataclass(frozen=True, slots=True)
-class ExtractedCall:
-    caller_name: str
-    callee_name: str
-    line: int
+from codenerva.application.parsing.extracted_call import ExtractedCall
 
 
 class JavaScriptCallExtractor:

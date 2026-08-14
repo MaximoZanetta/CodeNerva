@@ -1,4 +1,5 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from enum import StrEnum
 from uuid import UUID, uuid4
 
@@ -17,6 +18,7 @@ class Snapshot:
     branch: str | None
     remote_url: str
     status: SnapshotStatus
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
     @classmethod
     def create(
@@ -51,4 +53,15 @@ class Snapshot:
             branch=normalized_branch,
             remote_url=normalized_remote_url,
             status=SnapshotStatus.PENDING,
+        )
+
+    def mark_ready(self) -> "Snapshot":
+        return Snapshot(
+            id=self.id,
+            repository_id=self.repository_id,
+            commit_sha=self.commit_sha,
+            branch=self.branch,
+            remote_url=self.remote_url,
+            status=SnapshotStatus.READY,
+            created_at=self.created_at,
         )

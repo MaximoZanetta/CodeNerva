@@ -1,14 +1,8 @@
 import ast
-from dataclasses import dataclass
 
 from tree_sitter import Tree
 
-
-@dataclass(frozen=True, slots=True)
-class ExtractedCall:
-    caller_name: str
-    callee_name: str
-    line: int
+from codenerva.application.parsing.extracted_call import ExtractedCall
 
 
 class PythonCallExtractor:
@@ -27,32 +21,61 @@ class PythonCallExtractor:
         for node in ast.walk(root):
             if not isinstance(
                 node,
-                (ast.FunctionDef, ast.AsyncFunctionDef),
+                (
+                    ast.FunctionDef,
+                    ast.AsyncFunctionDef,
+                ),
             ):
                 continue
 
             caller_name = node.name
 
             for child in ast.walk(node):
-                if not isinstance(child, ast.Call):
+                if not isinstance(
+                    child,
+                    ast.Call,
+                ):
                     continue
 
-                callee_name = self._extract_callee_name(child.func)
+                extracted = self._extract_callee(child.func)
 
-                if callee_name is None:
+                if extracted is None:
                     continue
+
+                callee_name, owner_name = extracted
 
                 calls.append(
                     ExtractedCall(
                         caller_name=caller_name,
                         callee_name=callee_name,
+                        owner_name=owner_name,
                         line=child.lineno,
                     )
                 )
 
         return tuple(calls)
 
-    def _extract_callee_name(
+    def _extract_callee(
+        self,
+        node: ast.expr,
+    ) -> tuple[str, str | None] | None:
+        if isinstance(node, ast.Name):
+            return (
+                node.id,
+                None,
+            )
+
+        if isinstance(node, ast.Attribute):
+            owner_name = self._extract_owner_name(node.value)
+
+            return (
+                node.attr,
+                owner_name,
+            )
+
+        return None
+
+    def _extract_owner_name(
         self,
         node: ast.expr,
     ) -> str | None:
@@ -60,6 +83,24 @@ class PythonCallExtractor:
             return node.id
 
         if isinstance(node, ast.Attribute):
-            return node.attr
+            parts: list[str] = []
+
+            current: ast.expr = node
+
+            while isinstance(
+                current,
+                ast.Attribute,
+            ):
+                parts.append(current.attr)
+
+                current = current.value
+
+            if isinstance(
+                current,
+                ast.Name,
+            ):
+                parts.append(current.id)
+
+                return ".".join(reversed(parts))
 
         return None

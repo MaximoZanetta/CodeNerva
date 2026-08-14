@@ -13,3 +13,13 @@ class InMemoryProjectRepository(ProjectRepository):
 
     def get_by_id(self, project_id: UUID) -> Project | None:
         return self._projects.get(project_id)
+
+    def list_all(
+        self,
+    ) -> tuple[Project, ...]:
+        return tuple(
+            sorted(
+                self._projects.values(),
+                key=lambda project: project.name,
+            )
+        )

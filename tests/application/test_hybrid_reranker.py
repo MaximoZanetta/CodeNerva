@@ -1,3 +1,4 @@
+from pathlib import PurePosixPath
 from uuid import uuid4
 
 from codenerva.application.retrieval.hybrid_reranker import (
@@ -8,7 +9,14 @@ from codenerva.application.retrieval.hybrid_retrieval import (
     HybridRetrievalResult,
     HybridSemanticHit,
 )
+from codenerva.domain.programming_language import (
+    ProgrammingLanguage,
+)
+from codenerva.domain.source_file import SourceFile
 from codenerva.domain.symbol import Symbol, SymbolKind
+from codenerva.infrastructure.in_memory_source_file_store import (
+    InMemorySourceFileStore,
+)
 
 
 def test_reranker_combines_semantic_and_graph_relevance() -> None:
@@ -141,3 +149,243 @@ def test_reranker_orders_by_final_score() -> None:
 
     assert result.items[0].symbol.id == second.id
     assert result.items[1].symbol.id == first.id
+
+
+def test_reranker_penalizes_tests_for_non_testing_question() -> None:
+    snapshot_id = uuid4()
+
+    production_file = SourceFile.create(
+        snapshot_id=snapshot_id,
+        relative_path=PurePosixPath("app/fizz/controller.py"),
+        language=ProgrammingLanguage.PYTHON,
+        size_bytes=100,
+        content_hash="a" * 64,
+    )
+
+    test_file = SourceFile.create(
+        snapshot_id=snapshot_id,
+        relative_path=PurePosixPath("app/fizz/model_test.py"),
+        language=ProgrammingLanguage.PYTHON,
+        size_bytes=100,
+        content_hash="b" * 64,
+    )
+
+    source_file_store = InMemorySourceFileStore()
+
+    source_file_store.save_many(
+        (
+            production_file,
+            test_file,
+        )
+    )
+
+    production_symbol = Symbol.create(
+        source_file_id=production_file.id,
+        name="post_fizz",
+        qualified_name="post_fizz",
+        kind=SymbolKind.FUNCTION,
+        start_line=1,
+        end_line=3,
+    )
+
+    test_symbol = Symbol.create(
+        source_file_id=test_file.id,
+        name="fizz",
+        qualified_name="fizz",
+        kind=SymbolKind.FUNCTION,
+        start_line=1,
+        end_line=3,
+    )
+
+    retrieval_result = HybridRetrievalResult(
+        semantic_hits=(
+            HybridSemanticHit(
+                symbol=test_symbol,
+                score=0.60,
+            ),
+            HybridSemanticHit(
+                symbol=production_symbol,
+                score=0.57,
+            ),
+        ),
+        expanded_symbols=(),
+    )
+
+    result = HybridReranker(
+        source_file_store=source_file_store,
+    ).rerank(
+        retrieval_result=retrieval_result,
+        question=("How does the fizz feature work?"),
+    )
+
+    assert result.items[0].symbol.id == production_symbol.id
+
+    assert result.items[1].symbol.id == test_symbol.id
+
+
+def test_reranker_does_not_penalize_tests_for_testing_question() -> None:
+    snapshot_id = uuid4()
+
+    production_file = SourceFile.create(
+        snapshot_id=snapshot_id,
+        relative_path=PurePosixPath("app/fizz/controller.py"),
+        language=ProgrammingLanguage.PYTHON,
+        size_bytes=100,
+        content_hash="a" * 64,
+    )
+
+    test_file = SourceFile.create(
+        snapshot_id=snapshot_id,
+        relative_path=PurePosixPath("app/fizz/model_test.py"),
+        language=ProgrammingLanguage.PYTHON,
+        size_bytes=100,
+        content_hash="b" * 64,
+    )
+
+    source_file_store = InMemorySourceFileStore()
+
+    source_file_store.save_many(
+        (
+            production_file,
+            test_file,
+        )
+    )
+
+    production_symbol = Symbol.create(
+        source_file_id=production_file.id,
+        name="post_fizz",
+        qualified_name="post_fizz",
+        kind=SymbolKind.FUNCTION,
+        start_line=1,
+        end_line=3,
+    )
+
+    test_symbol = Symbol.create(
+        source_file_id=test_file.id,
+        name="fizz",
+        qualified_name="fizz",
+        kind=SymbolKind.FUNCTION,
+        start_line=1,
+        end_line=3,
+    )
+
+    retrieval_result = HybridRetrievalResult(
+        semantic_hits=(
+            HybridSemanticHit(
+                symbol=test_symbol,
+                score=0.60,
+            ),
+            HybridSemanticHit(
+                symbol=production_symbol,
+                score=0.57,
+            ),
+        ),
+        expanded_symbols=(),
+    )
+
+    result = HybridReranker(
+        source_file_store=source_file_store,
+    ).rerank(
+        retrieval_result=retrieval_result,
+        question=("How is the fizz feature tested?"),
+    )
+
+    assert result.items[0].symbol.id == test_symbol.id
+
+
+def test_reranker_boosts_executable_symbols_for_behavioral_question() -> None:
+    source_file_id = uuid4()
+
+    service_class = Symbol.create(
+        source_file_id=source_file_id,
+        name="FizzService",
+        qualified_name="FizzService",
+        kind=SymbolKind.CLASS,
+        start_line=1,
+        end_line=20,
+    )
+
+    create_method = Symbol.create(
+        source_file_id=source_file_id,
+        name="create",
+        qualified_name="FizzService.create",
+        kind=SymbolKind.METHOD,
+        start_line=10,
+        end_line=15,
+        parent_symbol_id=service_class.id,
+    )
+
+    retrieval_result = HybridRetrievalResult(
+        semantic_hits=(
+            HybridSemanticHit(
+                symbol=service_class,
+                score=0.50,
+            ),
+            HybridSemanticHit(
+                symbol=create_method,
+                score=0.49,
+            ),
+        ),
+        expanded_symbols=(),
+    )
+
+    result = HybridReranker().rerank(
+        retrieval_result=retrieval_result,
+        question="How does Fizz creation work?",
+    )
+
+    assert result.items[0].symbol.id == create_method.id
+
+    assert result.items[0].final_score == 0.54
+
+    assert result.items[1].final_score == 0.50
+
+
+def test_reranker_does_not_boost_executable_symbols_for_non_behavioral_question() -> (
+    None
+):
+    source_file_id = uuid4()
+
+    service_class = Symbol.create(
+        source_file_id=source_file_id,
+        name="FizzService",
+        qualified_name="FizzService",
+        kind=SymbolKind.CLASS,
+        start_line=1,
+        end_line=20,
+    )
+
+    create_method = Symbol.create(
+        source_file_id=source_file_id,
+        name="create",
+        qualified_name="FizzService.create",
+        kind=SymbolKind.METHOD,
+        start_line=10,
+        end_line=15,
+        parent_symbol_id=service_class.id,
+    )
+
+    retrieval_result = HybridRetrievalResult(
+        semantic_hits=(
+            HybridSemanticHit(
+                symbol=service_class,
+                score=0.50,
+            ),
+            HybridSemanticHit(
+                symbol=create_method,
+                score=0.49,
+            ),
+        ),
+        expanded_symbols=(),
+    )
+
+    result = HybridReranker().rerank(
+        retrieval_result=retrieval_result,
+        question="Where is FizzService defined?",
+    )
+
+    assert result.items[0].symbol.id == service_class.id
+
+    assert result.items[0].final_score == 0.50
+
+    assert result.items[1].final_score == 0.49

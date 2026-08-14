@@ -18,6 +18,7 @@ from codenerva.application.retrieval.hybrid_retrieval import (
 )
 from codenerva.application.retrieval.retrieval_context_builder import (
     RetrievalContextBuilder,
+    RetrievalOrigin,
 )
 from codenerva.domain.chunk import Chunk
 from codenerva.domain.snapshot import Snapshot
@@ -57,7 +58,7 @@ def test_answer_repository_question_uses_retrieved_context() -> None:
         commit_sha="a" * 40,
         branch="main",
         remote_url="https://github.com/example/repo",
-    )
+    ).mark_ready()
 
     snapshot_store = InMemorySnapshotStore()
     snapshot_store.save(snapshot)
@@ -140,6 +141,20 @@ def test_answer_repository_question_uses_retrieved_context() -> None:
 
     assert result.context_items == 1
 
+    assert len(result.sources) == 1
+
+    source = result.sources[0]
+
+    assert source.relative_path == "App.js"
+    assert source.qualified_name == "validationCheck"
+    assert source.symbol_kind == "FUNCTION"
+    assert source.language == "javascript"
+    assert source.start_line == 1
+    assert source.end_line == 3
+    assert source.semantic_score == 0.9
+    assert source.semantic_rank == 1
+    assert source.graph_relations == ()
+
     assert llm_provider.last_question == "Where is user input validated?"
 
     assert llm_provider.last_context is not None
@@ -147,6 +162,17 @@ def test_answer_repository_question_uses_retrieved_context() -> None:
     assert "validationCheck" in llm_provider.last_context
 
     assert "function validationCheck" in llm_provider.last_context
+    assert source.retrieval_origin == RetrievalOrigin.SEMANTIC
+
+    assert result.retrieval_diagnostics.semantic_sources == 1
+
+    assert result.retrieval_diagnostics.graph_sources == 0
+
+    assert result.retrieval_diagnostics.both_sources == 0
+
+    assert result.retrieval_diagnostics.final_context_items == 1
+
+    assert source.final_score == 0.9
 
 
 def test_answer_repository_question_rejects_empty_question() -> None:
@@ -155,7 +181,7 @@ def test_answer_repository_question_rejects_empty_question() -> None:
         commit_sha="b" * 40,
         branch="main",
         remote_url="https://github.com/example/repo",
-    )
+    ).mark_ready()
 
     snapshot_store = InMemorySnapshotStore()
     snapshot_store.save(snapshot)

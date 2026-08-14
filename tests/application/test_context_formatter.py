@@ -6,6 +6,7 @@ from codenerva.application.retrieval.context_formatter import (
 from codenerva.application.retrieval.retrieval_context_builder import (
     RetrievalContext,
     RetrievalContextItem,
+    RetrievalOrigin,
 )
 from codenerva.domain.chunk import Chunk
 
@@ -36,6 +37,8 @@ def test_context_formatter_formats_code_context() -> None:
                 semantic_score=0.4558,
                 semantic_rank=1,
                 graph_relations=("CALLED_BY:handleClick",),
+                retrieval_origin=RetrievalOrigin.BOTH,
+                final_score=0.70,
             ),
         )
     )

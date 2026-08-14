@@ -19,3 +19,8 @@ class SnapshotStore(Protocol):
         self,
         snapshot_id: UUID,
     ) -> bool: ...
+
+    def list_by_repository_id(
+        self,
+        repository_id: UUID,
+    ) -> tuple[Snapshot, ...]: ...

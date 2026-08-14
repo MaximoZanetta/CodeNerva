@@ -2,7 +2,7 @@
 
 > AI-native code intelligence platform for understanding, indexing, and querying software repositories.
 
-CodeNerva transforms source code repositories into structured knowledge that can be explored by developers and AI systems.
+CodeNerva transforms source code repositories into structured, persistent knowledge that can be explored by developers and AI systems.
 
 Rather than relying exclusively on vector similarity, CodeNerva combines static code analysis, semantic retrieval, graph-based relationships, and Large Language Models to reason about code at repository scale.
 
@@ -26,7 +26,7 @@ A developer joining an existing project often needs to answer questions such as:
 
 Traditional code search is useful for finding text, while embedding-based RAG can retrieve semantically similar code.
 
-CodeNerva goes further by combining semantic similarity with the structural relationships extracted directly from the source code.
+CodeNerva goes further by combining semantic similarity with structural relationships extracted directly from source code.
 
 ```text
 Repository
@@ -58,11 +58,12 @@ Tree-sitter Parsing
                        ▼
                   Knowledge Graph
                        │
-                ┌──────┴──────┐
-                │             │
+                 ┌─────┴─────┐
+                 │           │
+                 ▼           ▼
           Semantic Search  Graph Expansion
-                │             │
-                └──────┬──────┘
+                 │           │
+                 └─────┬─────┘
                        ▼
                 Hybrid Reranking
                        │
@@ -76,24 +77,27 @@ Tree-sitter Parsing
                      Answer
 ```
 
-The LLM is therefore not expected to discover the repository structure by itself. CodeNerva builds that structure before asking the model to reason over the relevant evidence.
+The LLM is not expected to discover the repository structure by itself. CodeNerva builds that structure before asking the model to reason over relevant evidence.
 
 ---
 
-## Current Status
+## Backend V1 Status
 
-🚧 **CodeNerva is under active development.**
+**Backend V1 is complete.**
 
-The current prototype supports an end-to-end persistent repository intelligence pipeline.
+The V1 backend implements an end-to-end repository intelligence pipeline: repository ingestion, static analysis, persistent indexing, hybrid retrieval, repository-grounded question answering, analysis jobs, and a REST API prepared for the frontend.
+
+CodeNerva remains a development-stage project and is not yet intended for production repository workloads.
 
 ### Repository ingestion
 
-- ✅ Project registration
+- ✅ Project registration and retrieval
+- ✅ GitHub repository registration
 - ✅ Git repository validation
 - ✅ Repository cloning
-- ✅ Repository snapshots
+- ✅ Commit-based repository snapshots
 - ✅ Source file discovery
-- ✅ Content hashing
+- ✅ SHA-256 content hashing
 - ✅ Programming language detection
 - ✅ Repository-wide analysis
 
@@ -102,8 +106,7 @@ The current prototype supports an end-to-end persistent repository intelligence 
 - ✅ Tree-sitter parsing
 - ✅ Multi-language parsing architecture
 - ✅ Symbol extraction
-- ✅ Functions and classes
-- ✅ Nested symbols
+- ✅ Functions, classes, methods, and nested symbols
 - ✅ Qualified symbol names
 - ✅ Import extraction
 - ✅ Local import resolution
@@ -112,32 +115,39 @@ The current prototype supports an end-to-end persistent repository intelligence 
 - ✅ Function call extraction
 - ✅ Cross-file call resolution
 - ✅ `CALLS` / `CALLED_BY` graph traversal
+- ✅ `CONTAINS` relationships
 
-### Retrieval
+### Indexing and retrieval
 
 - ✅ Symbol-aware code chunking
-- ✅ Embedding generation
-- ✅ Vector records
-- ✅ Semantic search
+- ✅ OpenAI embedding generation
+- ✅ Qdrant vector storage
 - ✅ Snapshot-scoped semantic search
 - ✅ Knowledge-graph expansion
 - ✅ Hybrid retrieval
 - ✅ Hybrid reranking
 - ✅ Context deduplication
 - ✅ Context budgeting
+- ✅ Retrieval diagnostics
+- ✅ Incremental snapshot indexing
+- ✅ Reuse of unchanged repository intelligence
 
 ### Repository QA
 
-- ✅ Repository-wide indexing
+- ✅ Repository-wide question answering
 - ✅ Retrieval context generation
-- ✅ LLM-based repository questions
+- ✅ LLM-based answers
 - ✅ Multi-file reasoning
 - ✅ Cross-language flow explanation
-- ✅ Snapshot-scoped repository questions
+- ✅ Snapshot-scoped questions
+- ✅ Grounded source metadata
+- ✅ Protection against questions on snapshots that are not ready
 
-### Persistence
+### Persistence and lifecycle
 
 - ✅ PostgreSQL persistence
+- ✅ SQLAlchemy persistence layer
+- ✅ Alembic database migrations
 - ✅ Persistent projects
 - ✅ Persistent repositories
 - ✅ Persistent snapshots
@@ -147,51 +157,79 @@ The current prototype supports an end-to-end persistent repository intelligence 
 - ✅ Persistent source-file relationships
 - ✅ Persistent symbol relationships
 - ✅ Persistent chunks
+- ✅ Persistent analysis jobs
 - ✅ Qdrant vector persistence
-- ✅ Snapshot-scoped vector retrieval
 - ✅ Repository QA across API restarts
+- ✅ Snapshot lifecycle
+- ✅ Analysis job lifecycle and progress
 
-CodeNerva can currently analyze and answer questions across code written in languages such as Python, JavaScript, TypeScript, and TSX, with the parsing architecture designed to be extended to additional languages.
+### API and quality
+
+- ✅ FastAPI REST API
+- ✅ Project read/write endpoints
+- ✅ Repository read/write endpoints
+- ✅ Snapshot read/write endpoints
+- ✅ Analysis job endpoints
+- ✅ Repository question endpoint
+- ✅ CORS configuration for the frontend
+- ✅ Domain, application, API, infrastructure, integration, and evaluation tests
+- ✅ Ruff linting and formatting
+- ✅ LLM-as-a-Judge evaluation
 
 ---
 
-## Example
+## How It Works
 
-After analyzing and indexing a repository, a developer can ask:
-
-```text
-How does streaming work end-to-end from the React client
-to the Python backend?
-```
-
-CodeNerva can retrieve relevant symbols from different files and languages and reconstruct a flow such as:
+The V1 pipeline can be summarized as:
 
 ```text
-React client
-
-handleClick
-    │
-    ▼
-handleStreamingChat
-    │
-    ▼
-fetchStreamData
-    │
-    │ HTTP streaming request
-    ▼
-
-Python backend
-
-stream
-    │
-    ▼
-generate
-    │
-    ▼
-Streaming model response
+Project
+   │
+   ▼
+Repository
+   │
+   ▼
+Clone
+   │
+   ▼
+Snapshot
+   │
+   ▼
+Analysis Job
+   │
+   ├── Discover files
+   │
+   └── Process repository
+          │
+          ├── Parse source code
+          ├── Extract symbols
+          ├── Extract imports
+          ├── Resolve relationships
+          ├── Build call graph
+          ├── Chunk symbols
+          ├── Generate embeddings
+          └── Index vectors
+                 │
+                 ▼
+               READY
+                 │
+                 ▼
+             Question
+                 │
+                 ▼
+          Hybrid Retrieval
+                 │
+                 ▼
+          Context Generation
+                 │
+                 ▼
+                LLM
+                 │
+                 ▼
+        Grounded Answer + Sources
 ```
 
-The final answer is generated from the retrieved source code and structural relationships rather than from vector similarity alone.
+Once repository intelligence is persisted, CodeNerva can answer questions after an application restart without rebuilding the entire representation.
 
 ---
 
@@ -200,16 +238,21 @@ The final answer is generated from the retrieved source code and structural rela
 CodeNerva follows a layered Clean Architecture.
 
 ```text
-                 API
-                  │
-                  ▼
-           Application Layer
-                  │
-                  ▼
-              Domain Layer
-                  ▲
-                  │
-          Infrastructure Layer
+                    API
+                     │
+                     ▼
+               Application
+                     │
+                     ▼
+                  Domain
+                     ▲
+                     │
+              Infrastructure
+              ├── PostgreSQL
+              ├── Qdrant
+              ├── Git
+              ├── Tree-sitter
+              └── OpenAI
 ```
 
 The project is built around explicit boundaries between domain concepts and infrastructure.
@@ -218,7 +261,7 @@ Main principles:
 
 - Clean Architecture
 - Dependency Inversion
-- Domain Driven Design foundations
+- Domain-Driven Design foundations
 - Explicit application use cases
 - Repository / Store abstractions
 - Infrastructure-independent domain models
@@ -227,61 +270,76 @@ Main principles:
 - Replaceable external providers
 - Persistent repository intelligence
 
-External systems such as embedding providers, vector databases, relational databases, and LLM providers are accessed through abstractions so they can be replaced without coupling the core application logic to a specific vendor.
+External systems such as embedding providers, vector databases, relational databases, Git, and LLM providers are accessed behind application/domain abstractions where appropriate.
 
 ---
 
-## Retrieval Architecture
+## Repository Intelligence
 
-CodeNerva currently combines two complementary retrieval strategies.
+CodeNerva separates repository intelligence into structured and semantic representations.
 
-### Semantic Retrieval
+### Structured knowledge
 
-Source code is chunked around semantic units such as functions and methods.
+Static analysis produces entities such as:
 
-Each chunk contains metadata such as:
+```text
+Repository
+└── Snapshot
+    └── Source Files
+        ├── Symbols
+        ├── Imports
+        ├── File Relations
+        └── Symbol Relations
+```
+
+Examples of structural relationships include:
+
+```text
+CONTAINS
+IMPORTS
+CALLS
+CALLED_BY
+```
+
+This representation allows CodeNerva to reason about code relationships that pure vector search cannot reliably reconstruct.
+
+### Semantic knowledge
+
+Source symbols are converted into chunks containing metadata such as:
 
 ```text
 Snapshot
-Language
 File
+Language
 Qualified symbol name
 Symbol kind
+Line range
 Source code
 ```
 
-Embeddings allow CodeNerva to find code that is semantically related to a natural-language question.
+Embeddings for those chunks are stored in Qdrant and filtered by `snapshot_id` during semantic search.
 
-Semantic searches are scoped by repository snapshot, preventing results from unrelated repository versions from being mixed.
+---
 
-### Graph Retrieval
+## Hybrid Retrieval
 
-Static analysis creates relationships between code entities.
-
-Examples include:
-
-```text
-CALLS
-CALLED_BY
-IMPORTS
-CONTAINS
-```
-
-These relationships allow CodeNerva to expand beyond the initial semantic matches and retrieve structurally related code.
-
-### Hybrid Retrieval
-
-The two strategies are combined:
+CodeNerva combines semantic and graph retrieval.
 
 ```text
 Question
    │
    ▼
-Snapshot-scoped
-Semantic Search
+Query Embedding
    │
    ▼
-Initial Symbols
+Snapshot-scoped
+Qdrant Search
+   │
+   ▼
+Semantic Hits
+   │
+   ▼
+Symbol Resolution
    │
    ▼
 Graph Expansion
@@ -290,27 +348,127 @@ Graph Expansion
 Hybrid Reranking
    │
    ▼
-Context Budget
+Context Builder
+   │
+   ├── Deduplication
+   └── Character / item budget
+   │
+   ▼
+Prompt
    │
    ▼
 LLM
+   │
+   ▼
+Answer + Sources + Retrieval Diagnostics
 ```
 
-This makes it possible to retrieve code that may not be semantically similar to the original question but is essential to understanding the execution flow.
+Semantic retrieval identifies code related to the natural-language question.
+
+Graph expansion then adds structurally relevant symbols such as callers and callees, even when those symbols are not themselves strong semantic matches.
+
+The combined candidates are reranked before the final context is assembled.
 
 ---
 
-## Persistent Repository Intelligence
+## Snapshot Isolation
 
-CodeNerva persists the repository representation instead of keeping repository intelligence only in application memory.
+Repositories are represented through commit-based snapshots.
 
-Structured repository knowledge is stored in PostgreSQL:
+Every semantic query is scoped by `snapshot_id`:
+
+```text
+Question
+   │
+   ▼
+snapshot_id
+   │
+   ▼
+Vector Search
+   │
+   ▼
+Qdrant Payload Filter
+   │
+   ▼
+Only vectors belonging
+to the requested snapshot
+```
+
+This prevents vectors from different repository versions from being mixed during retrieval.
+
+A snapshot also has a lifecycle. Repository questions are accepted only after the snapshot is ready, preventing incomplete repository intelligence from being queried as though analysis had finished.
+
+---
+
+## Analysis Jobs
+
+Repository analysis is represented explicitly as an analysis job.
+
+A job moves through the V1 lifecycle and exposes progress to API clients.
+
+Conceptually:
+
+```text
+QUEUED
+   │
+   ▼
+DISCOVERING
+   │
+   ▼
+PROCESSING
+   │
+   ▼
+READY
+```
+
+If a pipeline stage fails:
+
+```text
+QUEUED / DISCOVERING / PROCESSING
+               │
+               ▼
+             FAILED
+```
+
+Analysis jobs are persisted in PostgreSQL, allowing their state to survive application restarts.
+
+The V1 orchestration is intentionally simpler than a production distributed worker system. Moving long-running processing to a dedicated job queue/worker is a V2 concern.
+
+---
+
+## Incremental Indexing
+
+CodeNerva uses snapshot comparison and source-file content hashes to avoid unnecessarily rebuilding unchanged repository intelligence.
+
+```text
+Previous Snapshot
+       │
+       │ compare paths + hashes
+       ▼
+Current Snapshot
+       │
+       ├── Unchanged ──► Reuse intelligence
+       ├── Modified ───► Analyze + reindex
+       ├── Added ──────► Analyze + index
+       └── Deleted ────► Exclude from current snapshot
+```
+
+For unchanged files, CodeNerva can reuse persisted symbols, relationships, chunks, and vectors where applicable.
+
+This reduces repeated parsing, indexing work, and embedding cost as repositories evolve.
+
+---
+
+## Persistence
+
+CodeNerva persists structured repository intelligence in PostgreSQL.
 
 ```text
 PostgreSQL
 ├── Projects
 ├── Repositories
 ├── Snapshots
+├── Analysis Jobs
 ├── Source Files
 ├── Symbols
 ├── Import References
@@ -330,16 +488,16 @@ Qdrant
     └── Symbol metadata
 ```
 
-This separation allows CodeNerva to reconstruct its repository intelligence pipeline after an application restart without requiring the repository to be analyzed and indexed again.
+The two representations are connected through stable identifiers and snapshot metadata.
 
 ```text
-PostgreSQL                Qdrant
-     │                       │
-Structured Knowledge     Embeddings
-     │                       │
-     └──────────┬────────────┘
+PostgreSQL                 Qdrant
+     │                        │
+Structured Knowledge      Embeddings
+     │                        │
+     └──────────┬─────────────┘
                 ▼
-        Hybrid Retrieval
+         Hybrid Retrieval
                 │
                 ▼
         Context Generation
@@ -351,72 +509,66 @@ Structured Knowledge     Embeddings
               Answer
 ```
 
-Repository questions therefore operate over persisted repository intelligence rather than process-local application state.
+---
+
+## Evaluation
+
+V1 includes automated evaluation in addition to conventional unit and integration tests.
+
+Evaluation covers repository questions using known expected facts and repository context.
+
+The evaluation system includes:
+
+- Repository evaluation fixtures
+- Retrieval diagnostics
+- Expected-fact evaluation
+- LLM-as-a-Judge scoring
+- Correctness scoring
+- Groundedness scoring
+- Completeness scoring
+
+Example judge output:
+
+```text
+Correctness:   1.000
+Groundedness:  1.000
+Completeness:  1.000
+Mean score:    1.000
+```
+
+LLM-based evaluation is inherently less deterministic than conventional tests. A single judge-score fluctuation should therefore be investigated before being treated as a deterministic application regression.
 
 ---
 
-## Snapshot Isolation
+## API
 
-CodeNerva models repositories through commit-based snapshots.
+The REST API exposes the core V1 workflow.
 
-Semantic retrieval is explicitly scoped by `snapshot_id`.
-
-```text
-Question
-   │
-   ▼
-snapshot_id
-   │
-   ▼
-Vector Search
-   │
-   ▼
-Qdrant Payload Filter
-   │
-   ▼
-Only vectors belonging
-to the requested snapshot
-```
-
-This prevents semantic results from different repositories or different versions of the same repository from being mixed during retrieval.
-
-Snapshot isolation also provides the foundation for future capabilities such as:
-
-- Incremental indexing
-- Snapshot comparison
-- Change-impact analysis
-- Historical repository exploration
-
----
-
-## Persistence Architecture
-
-CodeNerva separates structured repository knowledge from vector retrieval infrastructure.
+Representative endpoints include:
 
 ```text
-                         CodeNerva
-                             │
-                ┌────────────┴────────────┐
-                │                         │
-                ▼                         ▼
-           PostgreSQL                  Qdrant
-                │                         │
-                ├── Projects              └── Embeddings
-                ├── Repositories              + metadata
-                ├── Snapshots
-                ├── Source Files
-                ├── Symbols
-                ├── Imports
-                ├── File Relations
-                ├── Symbol Relations
-                └── Chunks
+GET    /health
+
+POST   /api/v1/projects
+GET    /api/v1/projects
+GET    /api/v1/projects/{project_id}
+
+POST   /api/v1/projects/{project_id}/repository
+GET    /api/v1/projects/{project_id}/repository
+
+POST   /api/v1/repositories/{repository_id}/clone
+POST   /api/v1/repositories/{repository_id}/snapshots
+GET    /api/v1/repositories/{repository_id}/snapshots
+
+GET    /api/v1/snapshots/{snapshot_id}
+
+POST   /api/v1/analysis-jobs
+GET    /api/v1/analysis-jobs/{job_id}
+
+POST   /api/v1/questions
 ```
 
-PostgreSQL acts as the persistent source of structured repository intelligence.
-
-Qdrant stores the vector representation required for semantic retrieval.
-
-The two representations are connected through stable identifiers and snapshot metadata.
+The exact OpenAPI contract can be inspected through FastAPI's generated documentation while the application is running.
 
 ---
 
@@ -451,6 +603,7 @@ The two representations are connected through stable identifiers and snapshot me
 
 - PostgreSQL
 - SQLAlchemy
+- Alembic
 - Qdrant
 
 ### Testing
@@ -459,15 +612,24 @@ The two representations are connected through stable identifiers and snapshot me
 - httpx
 - Deterministic test embedding provider
 - In-memory infrastructure implementations
+- Integration tests
+- Evaluation fixtures
+- LLM-as-a-Judge
 
 ### Code Quality
 
 - Ruff
 
+### Frontend
+
+Frontend development begins after the Backend V1 milestone.
+
 ### Planned Infrastructure
 
-- Database migrations
 - Docker
+- Dedicated background worker / job queue
+- Production observability
+- CI/CD
 
 ---
 
@@ -478,11 +640,15 @@ src/
 └── codenerva/
     ├── api/
     ├── application/
+    │   ├── analysis/
     │   ├── chunking/
     │   ├── embeddings/
     │   ├── parsing/
     │   ├── qa/
-    │   └── retrieval/
+    │   ├── repository/
+    │   ├── retrieval/
+    │   ├── snapshots/
+    │   └── source/
     ├── domain/
     └── infrastructure/
         └── database/
@@ -491,6 +657,7 @@ tests/
 ├── api/
 ├── application/
 ├── domain/
+├── evaluation/
 ├── infrastructure/
 └── integration/
 
@@ -499,34 +666,37 @@ scripts/
 storage/
 ├── repositories/
 └── qdrant/
+
+alembic/
+└── versions/
 ```
 
 ---
 
 ## Running Locally
 
-Clone the repository:
+### 1. Clone the repository
 
 ```bash
 git clone <repository-url>
 cd CodeNerva
 ```
 
-Install dependencies:
+### 2. Install dependencies
 
 ```bash
 uv sync
 ```
 
-Configure the required environment variables.
+### 3. Configure environment variables
 
-For PostgreSQL persistence:
+PostgreSQL:
 
 ```text
 DATABASE_URL=postgresql+psycopg://<user>:<password>@localhost:5432/codenerva
 ```
 
-For OpenAI-backed embeddings and repository QA:
+OpenAI-backed embeddings, repository QA, and LLM evaluation:
 
 ```text
 OPENAI_API_KEY=your-api-key
@@ -534,19 +704,19 @@ OPENAI_API_KEY=your-api-key
 
 Do not commit credentials or local environment files containing secrets.
 
-Initialize the PostgreSQL database:
+### 4. Apply database migrations
 
 ```bash
-uv run python scripts/init_database.py
+uv run alembic upgrade head
 ```
 
-Run the API:
+### 5. Run the API
 
 ```bash
 uv run uvicorn codenerva.main:app --reload
 ```
 
-Swagger UI:
+Swagger UI is available at:
 
 ```text
 http://127.0.0.1:8000/docs
@@ -558,7 +728,11 @@ Health check:
 GET /health
 ```
 
-Run the test suite:
+---
+
+## Testing
+
+Run the complete test suite:
 
 ```bash
 uv run pytest
@@ -576,111 +750,141 @@ Format the code:
 uv run ruff format .
 ```
 
----
-
-## Current End-to-End Flow
-
-The current development flow is:
-
-```text
-Register Project
-      │
-      ▼
-Register Repository
-      │
-      ▼
-Create Snapshot
-      │
-      ▼
-Clone Repository
-      │
-      ▼
-Discover Files
-      │
-      ▼
-Analyze Snapshot
-      │
-      ├── Parse source code
-      ├── Extract symbols
-      ├── Extract imports
-      ├── Resolve local imports
-      ├── Build file relationships
-      └── Build call relationships
-      │
-      ▼
-Persist Repository Intelligence
-      │
-      └── PostgreSQL
-      │
-      ▼
-Index Snapshot
-      │
-      ├── Generate symbol chunks
-      ├── Persist chunks
-      ├── Generate embeddings
-      └── Store vectors in Qdrant
-      │
-      ▼
-Ask Repository Question
-      │
-      ├── Filter retrieval by snapshot
-      ├── Semantic retrieval
-      ├── Graph expansion
-      ├── Hybrid reranking
-      ├── Context budgeting
-      └── LLM answer generation
-```
-
-After repository intelligence has been persisted, CodeNerva can answer questions after an application restart without rebuilding the repository representation.
+Some evaluation tests call external LLM services and therefore require `OPENAI_API_KEY`. LLM-as-a-Judge results may exhibit limited run-to-run variance.
 
 ---
 
-## Repository Question Flow
+## V1 Scope
 
-A repository question currently travels through the following pipeline:
+Backend V1 establishes the core repository-intelligence architecture.
+
+It includes:
+
+- Repository ingestion
+- Commit-based snapshots
+- Static multi-language code analysis
+- Persistent repository knowledge
+- Knowledge-graph relationships
+- Symbol-aware chunking
+- Embeddings and vector indexing
+- Hybrid semantic + graph retrieval
+- Context construction and budgeting
+- Repository-grounded LLM answers
+- Sources and retrieval diagnostics
+- Incremental indexing
+- Persistent analysis jobs
+- Snapshot readiness lifecycle
+- REST API
+- Automated evaluation
+
+The purpose of V1 is not to solve every code-intelligence problem. It establishes a working, testable architecture on which more advanced intelligence and product capabilities can be built.
+
+---
+
+## Next Milestone — Frontend V1
+
+With Backend V1 complete, the next milestone is a developer-facing interface.
+
+The initial frontend flow is intended to expose the existing backend capabilities:
 
 ```text
-Question + snapshot_id
-        │
-        ▼
-Query Embedding
-        │
-        ▼
-Qdrant Search
-        │
-        │ snapshot_id filter
-        ▼
-Semantic Hits
-        │
-        ▼
-Symbol Resolution
-        │
-        ▼
-Graph Expansion
-        │
-        ▼
-Hybrid Reranking
-        │
-        ▼
-Context Builder
-        │
-        ▼
-Deduplication
-        │
-        ▼
-Character / Item Budget
-        │
-        ▼
-Prompt Construction
-        │
-        ▼
-LLM
-        │
-        ▼
-Repository-grounded Answer
+Projects
+   │
+   ▼
+Repository
+   │
+   ▼
+Snapshots
+   │
+   ▼
+Analysis Status
+   │
+   ▼
+Repository Chat
+   │
+   ▼
+Answer + Sources
 ```
 
-This architecture keeps retrieval responsibilities separate from answer generation.
+The frontend should make it possible to register a repository, analyze a snapshot, observe analysis progress, ask repository questions, and inspect the source evidence used to produce an answer.
+
+---
+
+## Backend V2 Roadmap
+
+V2 will focus on making repository intelligence more conversational, resilient, scalable, and precise.
+
+### Conversational intelligence
+
+- [ ] Persistent conversations and messages
+- [ ] Conversation history by project/snapshot
+- [ ] Conversational RAG
+- [ ] Query rewriting from conversation context
+- [ ] Intelligent selection of previous messages
+- [ ] Persist sources and diagnostics with answers
+
+### Processing and reliability
+
+- [ ] Dedicated background worker / job queue
+- [ ] Retry policies
+- [ ] Job cancellation
+- [ ] More granular analysis progress
+- [ ] Stronger idempotency and concurrency control
+- [ ] Structured pipeline failure information
+
+### Retrieval
+
+- [ ] Lexical / BM25 retrieval
+- [ ] Retrieval fusion such as RRF
+- [ ] More advanced reranking
+- [ ] Multi-query retrieval
+- [ ] Dynamic retrieval depth
+- [ ] Multi-hop graph traversal
+- [ ] Question-aware graph expansion
+- [ ] Agentic / tool-driven repository investigation
+
+### Code intelligence
+
+- [ ] Architecture-level repository analysis
+- [ ] Entrypoint detection
+- [ ] Module and subsystem discovery
+- [ ] Additional graph relation types
+- [ ] Improved cross-file call resolution
+- [ ] Change-impact analysis
+- [ ] Test-to-production-code relationships
+- [ ] Repository-level summaries
+- [ ] Deeper multi-language support
+
+### GitHub and product capabilities
+
+- [ ] GitHub OAuth
+- [ ] Private repository support
+- [ ] GitHub webhooks
+- [ ] Automatic snapshots on new commits
+- [ ] Authentication
+- [ ] Users and organizations
+- [ ] Project permissions
+
+### Production infrastructure
+
+- [ ] Docker
+- [ ] Rate limiting
+- [ ] Usage and cost tracking
+- [ ] Structured logging
+- [ ] Metrics and tracing
+- [ ] Managed PostgreSQL / Qdrant deployment
+- [ ] CI/CD
+- [ ] Resource cleanup and retention policies
+- [ ] Security hardening for untrusted repositories
+
+### Evaluation
+
+- [ ] Larger multi-repository benchmark
+- [ ] More languages in the evaluation corpus
+- [ ] Architecture and debugging question sets
+- [ ] Retrieval regression benchmarks
+- [ ] More deterministic fact-level evaluation
+- [ ] Improved LLM-judge stability
 
 ---
 
@@ -714,11 +918,7 @@ into:
 question → structural investigation → evidence → explanation
 ```
 
----
-
-## Product Direction
-
-One of the primary use cases being explored is **developer onboarding into large, unfamiliar codebases**.
+One of CodeNerva's primary product directions is developer onboarding into large, unfamiliar codebases.
 
 Potential applications include:
 
@@ -730,156 +930,11 @@ Potential applications include:
 - AI-assisted codebase navigation
 - Engineering knowledge discovery
 
-A possible onboarding workflow is:
-
-```text
-New Developer
-      │
-      ▼
-Existing Repository
-      │
-      ▼
-CodeNerva
-      │
-      ├── Understand architecture
-      ├── Trace execution flows
-      ├── Discover dependencies
-      ├── Locate business rules
-      └── Ask repository questions
-```
-
-CodeNerva is currently a development-stage prototype and is not yet intended for production repository workloads.
-
----
-
-## Roadmap
-
-### Core Intelligence
-
-- [x] Project registration
-- [x] Repository registration
-- [x] Repository cloning
-- [x] Repository snapshots
-- [x] File discovery
-- [x] Content hashing
-- [x] Language detection
-- [x] Tree-sitter parsing
-- [x] Symbol extraction
-- [x] Import extraction
-- [x] Local import resolution
-- [x] TypeScript path alias resolution
-- [x] Call graph extraction
-- [x] Cross-file call resolution
-- [x] Symbol-aware chunking
-- [x] Embeddings
-- [x] Semantic retrieval
-- [x] Knowledge-graph expansion
-- [x] Hybrid retrieval
-- [x] Hybrid reranking
-- [x] Context budgeting
-- [x] Repository-wide indexing
-- [x] Repository QA
-
-### Infrastructure
-
-- [x] PostgreSQL persistence
-- [x] Persistent projects
-- [x] Persistent repositories
-- [x] Persistent snapshots
-- [x] Persistent source files
-- [x] Persistent symbols
-- [x] Persistent imports
-- [x] Persistent source-file relationships
-- [x] Persistent symbol relationships
-- [x] Persistent repository graph
-- [x] Persistent chunks
-- [x] Qdrant vector persistence
-- [x] Snapshot-scoped vector retrieval
-- [x] Repository QA across application restarts
-- [x] Incremental indexing
-- [ ] Snapshot-aware vector lifecycle
-- [ ] Database migrations
-- [ ] Docker environment
-
-### Code Intelligence
-
-- [ ] Architecture-level repository analysis
-- [ ] Entrypoint detection
-- [ ] Module / subsystem discovery
-- [ ] Additional graph relation types
-- [ ] Change-impact analysis
-- [ ] Test-to-production-code relationships
-- [ ] Repository-level summaries
-- [ ] Improved multi-language coverage
-
-### Retrieval & Evaluation
-
-- [ ] Incremental embedding generation
-- [x] Reuse unchanged files through content hashes
-- [ ] Retrieval evaluation dataset
-- [ ] Retrieval quality benchmarks
-- [ ] Larger repository evaluation
-- [ ] Retrieval tracing and diagnostics
-- [ ] Context quality evaluation
-
-### Product
-
-- [ ] GitHub integration
-- [ ] Private repository support
-- [ ] Authentication and organizations
-- [ ] Repository indexing jobs
-- [ ] Developer-facing interface
-- [ ] Evaluation benchmarks
-- [ ] Production observability
-
----
-
-## Next Milestone
-
-The next major technical milestone is **incremental repository indexing**.
-
-CodeNerva already stores SHA-256 content hashes for discovered source files and models repositories through snapshots.
-
-The next step is to use those properties to determine which files actually changed between snapshots.
-
-Instead of:
-
-```text
-New commit
-    │
-    ▼
-Reanalyze every file
-    │
-    ▼
-Re-embed every symbol
-```
-
-the intended flow is:
-
-```text
-New commit
-    │
-    ▼
-Compare file hashes
-    │
-    ├── Unchanged ──► Reuse existing intelligence
-    │
-    ├── Modified ───► Reanalyze + reindex
-    │
-    ├── Added ──────► Analyze + index
-    │
-    └── Deleted ────► Remove / invalidate
-```
-
-This will reduce indexing time, embedding cost, and unnecessary processing when repositories evolve between commits.
-
 ---
 
 ## Development Philosophy
 
-CodeNerva is being developed incrementally with tests around domain and application behavior.
-
-The project intentionally separates:
+CodeNerva intentionally separates:
 
 ```text
 code intelligence
@@ -891,9 +946,7 @@ The objective is not to rely on an LLM to discover an entire repository from scr
 
 Instead, CodeNerva builds a structured representation of the software and provides the model with carefully retrieved evidence required to answer each question.
 
-The system is also designed so infrastructure choices remain replaceable.
-
-For example:
+Infrastructure choices are designed to remain replaceable:
 
 ```text
 Domain / Application
@@ -908,10 +961,10 @@ Domain / Application
         └── LLMProvider
                 │
                 ▼
-       Infrastructure implementations
+        Infrastructure implementations
 ```
 
-This makes it possible to evolve persistence, retrieval, embedding, and LLM infrastructure without rewriting the core repository intelligence logic.
+This allows persistence, retrieval, embedding, and LLM infrastructure to evolve without rewriting the core repository-intelligence logic.
 
 ---
 

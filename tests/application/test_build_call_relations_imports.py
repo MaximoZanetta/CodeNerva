@@ -4,11 +4,9 @@ from uuid import uuid4
 from codenerva.application.parsing.build_call_relations import (
     BuildCallRelationsService,
 )
+from codenerva.application.parsing.extracted_call import ExtractedCall
 from codenerva.application.parsing.imported_symbol_resolver import (
     ImportedSymbolResolver,
-)
-from codenerva.application.parsing.javascript_call_extractor import (
-    ExtractedCall,
 )
 from codenerva.domain.import_reference import ImportReference
 from codenerva.domain.programming_language import ProgrammingLanguage
@@ -105,6 +103,7 @@ def test_build_call_relation_to_imported_symbol() -> None:
             ExtractedCall(
                 caller_name="handleClick",
                 callee_name="validateUser",
+                owner_name=None,
                 line=4,
             ),
         ),

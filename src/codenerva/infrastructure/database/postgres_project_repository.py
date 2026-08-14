@@ -1,5 +1,6 @@
 from uuid import UUID
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
 from codenerva.domain.project import (
@@ -51,6 +52,16 @@ class PostgresProjectRepository(ProjectRepository):
                 return None
 
             return self._to_domain(model)
+
+    def list_all(
+        self,
+    ) -> tuple[Project, ...]:
+        with self._session_factory() as session:
+            statement = select(ProjectModel).order_by(ProjectModel.name.asc())
+
+            models = session.scalars(statement).all()
+
+            return tuple(self._to_domain(model) for model in models)
 
     def _to_domain(
         self,

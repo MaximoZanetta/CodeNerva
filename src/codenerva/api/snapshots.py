@@ -116,9 +116,8 @@ from codenerva.application.parsing.typescript_path_alias_resolver import (
 )
 from codenerva.application.qa.answer_repository_question import (
     AnswerRepositoryQuestionUseCase,
-)
-from codenerva.application.qa.answer_repository_question import (
-    SnapshotNotFoundError as AskSnapshotNotFoundError,
+    SnapshotNotFoundError,
+    SnapshotNotReadyError,
 )
 from codenerva.application.retrieval.context_formatter import (
     ContextFormatter,
@@ -389,11 +388,34 @@ class AskRepositoryRequest(BaseModel):
     max_chars: int = 12000
 
 
+class AskRepositorySourceResponse(BaseModel):
+    relative_path: str
+    qualified_name: str
+    symbol_kind: str
+    language: str
+    start_line: int
+    end_line: int
+    semantic_score: float | None
+    semantic_rank: int | None
+    graph_relations: list[str]
+    retrieval_origin: str
+    final_score: float
+
+
+class RetrievalDiagnosticsResponse(BaseModel):
+    semantic_sources: int
+    graph_sources: int
+    both_sources: int
+    final_context_items: int
+
+
 class AskRepositoryResponse(BaseModel):
     snapshot_id: str
     question: str
     answer: str
     context_items: int
+    sources: list[AskRepositorySourceResponse]
+    retrieval_diagnostics: RetrievalDiagnosticsResponse
 
 
 class IndexSnapshotResponse(BaseModel):
@@ -434,6 +456,15 @@ class PurgeSnapshotResponse(BaseModel):
     deleted_symbols: int
     deleted_source_files: int
     snapshot_deleted: bool
+
+
+class SnapshotResponse(BaseModel):
+    id: str
+    repository_id: str
+    commit_sha: str
+    branch: str | None
+    remote_url: str
+    status: str
 
 
 def get_discover_snapshot_files_use_case() -> DiscoverSnapshotFilesUseCase:
@@ -604,7 +635,9 @@ def get_retrieval_context_builder() -> RetrievalContextBuilder:
 def get_answer_repository_question_use_case() -> AnswerRepositoryQuestionUseCase:
     return AnswerRepositoryQuestionUseCase(
         hybrid_retrieval=get_hybrid_retrieval_use_case(),
-        hybrid_reranker=HybridReranker(),
+        hybrid_reranker=HybridReranker(
+            source_file_store=source_file_store,
+        ),
         context_builder=RetrievalContextBuilder(
             chunk_store=chunk_store,
         ),
@@ -675,6 +708,31 @@ def get_purge_snapshot_use_case() -> PurgeSnapshotUseCase:
         import_reference_store=import_reference_store,
         chunk_store=chunk_store,
         vector_store=vector_store,
+    )
+
+
+@router.get(
+    "/{snapshot_id}",
+    response_model=SnapshotResponse,
+)
+def get_snapshot(
+    snapshot_id: UUID,
+) -> SnapshotResponse:
+    snapshot = snapshot_store.get_by_id(snapshot_id)
+
+    if snapshot is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=(f"Snapshot with id {snapshot_id} was not found."),
+        )
+
+    return SnapshotResponse(
+        id=str(snapshot.id),
+        repository_id=str(snapshot.repository_id),
+        commit_sha=snapshot.commit_sha,
+        branch=snapshot.branch,
+        remote_url=snapshot.remote_url,
+        status=snapshot.status.value,
     )
 
 
@@ -1338,9 +1396,14 @@ def ask_repository(
             max_items=request.max_items,
             max_chars=request.max_chars,
         )
-    except AskSnapshotNotFoundError as exc:
+    except SnapshotNotFoundError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from exc
+    except SnapshotNotReadyError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
             detail=str(exc),
         ) from exc
 
@@ -1349,6 +1412,28 @@ def ask_repository(
         question=request.question,
         answer=result.answer,
         context_items=result.context_items,
+        sources=[
+            AskRepositorySourceResponse(
+                relative_path=source.relative_path,
+                qualified_name=source.qualified_name,
+                symbol_kind=source.symbol_kind,
+                language=source.language,
+                start_line=source.start_line,
+                end_line=source.end_line,
+                semantic_score=source.semantic_score,
+                semantic_rank=source.semantic_rank,
+                graph_relations=list(source.graph_relations),
+                retrieval_origin=source.retrieval_origin.value,
+                final_score=source.final_score,
+            )
+            for source in result.sources
+        ],
+        retrieval_diagnostics=RetrievalDiagnosticsResponse(
+            semantic_sources=(result.retrieval_diagnostics.semantic_sources),
+            graph_sources=(result.retrieval_diagnostics.graph_sources),
+            both_sources=(result.retrieval_diagnostics.both_sources),
+            final_context_items=(result.retrieval_diagnostics.final_context_items),
+        ),
     )
 
 

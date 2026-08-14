@@ -39,3 +39,20 @@ class InMemorySnapshotStore(SnapshotStore):
         del self._snapshots[snapshot_id]
 
         return True
+
+    def list_by_repository_id(
+        self,
+        repository_id: UUID,
+    ) -> tuple[Snapshot, ...]:
+        snapshots = tuple(
+            snapshot
+            for snapshot in self._snapshots.values()
+            if snapshot.repository_id == repository_id
+        )
+
+        return tuple(
+            sorted(
+                snapshots,
+                key=lambda snapshot: snapshot.created_at,
+            )
+        )

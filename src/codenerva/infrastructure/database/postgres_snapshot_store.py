@@ -1,3 +1,4 @@
+from datetime import UTC
 from uuid import UUID
 
 from sqlalchemy import delete, select
@@ -33,6 +34,7 @@ class PostgresSnapshotStore(SnapshotStore):
                 branch=snapshot.branch,
                 remote_url=snapshot.remote_url,
                 status=snapshot.status.value,
+                created_at=snapshot.created_at,
             )
 
             session.merge(model)
@@ -75,6 +77,13 @@ class PostgresSnapshotStore(SnapshotStore):
         self,
         model: SnapshotModel,
     ) -> Snapshot:
+        created_at = model.created_at
+
+        if created_at.tzinfo is None:
+            created_at = created_at.replace(
+                tzinfo=UTC,
+            )
+
         return Snapshot(
             id=model.id,
             repository_id=model.repository_id,
@@ -82,6 +91,7 @@ class PostgresSnapshotStore(SnapshotStore):
             branch=model.branch,
             remote_url=model.remote_url,
             status=SnapshotStatus(model.status),
+            created_at=created_at,
         )
 
     def delete(
@@ -95,3 +105,18 @@ class PostgresSnapshotStore(SnapshotStore):
             session.commit()
 
             return bool(result.rowcount)
+
+    def list_by_repository_id(
+        self,
+        repository_id: UUID,
+    ) -> tuple[Snapshot, ...]:
+        with self._session_factory() as session:
+            statement = (
+                select(SnapshotModel)
+                .where(SnapshotModel.repository_id == repository_id)
+                .order_by(SnapshotModel.created_at.asc())
+            )
+
+            models = session.scalars(statement).all()
+
+            return tuple(self._to_domain(model) for model in models)

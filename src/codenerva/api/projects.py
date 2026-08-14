@@ -91,6 +91,10 @@ class RepositoryResponse(BaseModel):
     status: str
 
 
+class ListProjectsResponse(BaseModel):
+    projects: list[ProjectResponse]
+
+
 def get_register_repository_use_case() -> RegisterRepositoryUseCase:
     return RegisterRepositoryUseCase(
         project_repository=project_repository,
@@ -141,4 +145,80 @@ def register_repository(
         owner=result.owner,
         name=result.name,
         status=result.status,
+    )
+
+
+@router.get(
+    "",
+    response_model=ListProjectsResponse,
+)
+def list_projects() -> ListProjectsResponse:
+    projects = project_repository.list_all()
+
+    return ListProjectsResponse(
+        projects=[
+            ProjectResponse(
+                id=str(project.id),
+                name=project.name,
+                description=project.description,
+                status=project.status.value,
+            )
+            for project in projects
+        ]
+    )
+
+
+@router.get(
+    "/{project_id}",
+    response_model=ProjectResponse,
+)
+def get_project(
+    project_id: UUID,
+) -> ProjectResponse:
+    project = project_repository.get_by_id(project_id)
+
+    if project is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=(f"Project with id {project_id} was not found."),
+        )
+
+    return ProjectResponse(
+        id=str(project.id),
+        name=project.name,
+        description=project.description,
+        status=project.status.value,
+    )
+
+
+@router.get(
+    "/{project_id}/repository",
+    response_model=RepositoryResponse,
+)
+def get_project_repository(
+    project_id: UUID,
+) -> RepositoryResponse:
+    project = project_repository.get_by_id(project_id)
+
+    if project is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=(f"Project with id {project_id} was not found."),
+        )
+
+    repository = repository_store.get_by_project_id(project_id)
+
+    if repository is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=(f"Repository for project {project_id} was not found."),
+        )
+
+    return RepositoryResponse(
+        id=str(repository.id),
+        project_id=str(repository.project_id),
+        remote_url=repository.remote_url,
+        owner=repository.owner,
+        name=repository.name,
+        status=repository.status.value,
     )

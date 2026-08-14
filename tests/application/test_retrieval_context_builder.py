@@ -207,3 +207,389 @@ def test_context_builder_respects_character_budget() -> None:
 
     assert len(result.items) == 1
     assert result.items[0].symbol_id == first.id
+
+
+def test_context_builder_prefers_production_code_for_non_testing_question() -> None:
+    source_file_id = uuid4()
+    snapshot_id = uuid4()
+
+    production_first = Symbol.create(
+        source_file_id=source_file_id,
+        name="post_fizz",
+        qualified_name="post_fizz",
+        kind=SymbolKind.FUNCTION,
+        start_line=1,
+        end_line=3,
+    )
+
+    test_symbol = Symbol.create(
+        source_file_id=source_file_id,
+        name="fizz",
+        qualified_name="fizz",
+        kind=SymbolKind.FUNCTION,
+        start_line=5,
+        end_line=7,
+    )
+
+    production_second = Symbol.create(
+        source_file_id=source_file_id,
+        name="create",
+        qualified_name="FizzService.create",
+        kind=SymbolKind.METHOD,
+        start_line=10,
+        end_line=15,
+    )
+
+    chunk_store = InMemoryChunkStore()
+
+    production_first_chunk = Chunk.create(
+        snapshot_id=snapshot_id,
+        source_file_id=source_file_id,
+        symbol_id=production_first.id,
+        text="async def post_fizz(): pass",
+        code="async def post_fizz(): pass",
+        relative_path="app/fizz/controller.py",
+        language="python",
+        qualified_name="post_fizz",
+        symbol_kind="FUNCTION",
+        start_line=1,
+        end_line=3,
+    )
+
+    test_chunk = Chunk.create(
+        snapshot_id=snapshot_id,
+        source_file_id=source_file_id,
+        symbol_id=test_symbol.id,
+        text="def fizz(): pass",
+        code="def fizz(): pass",
+        relative_path="app/fizz/model_test.py",
+        language="python",
+        qualified_name="fizz",
+        symbol_kind="FUNCTION",
+        start_line=5,
+        end_line=7,
+    )
+
+    production_second_chunk = Chunk.create(
+        snapshot_id=snapshot_id,
+        source_file_id=source_file_id,
+        symbol_id=production_second.id,
+        text="async def create(): pass",
+        code="async def create(): pass",
+        relative_path="app/fizz/service.py",
+        language="python",
+        qualified_name="FizzService.create",
+        symbol_kind="METHOD",
+        start_line=10,
+        end_line=15,
+    )
+
+    chunk_store.save_many(
+        (
+            production_first_chunk,
+            test_chunk,
+            production_second_chunk,
+        )
+    )
+
+    retrieval_result = HybridRetrievalResult(
+        semantic_hits=(
+            HybridSemanticHit(
+                symbol=production_first,
+                score=0.90,
+            ),
+            HybridSemanticHit(
+                symbol=test_symbol,
+                score=0.85,
+            ),
+            HybridSemanticHit(
+                symbol=production_second,
+                score=0.80,
+            ),
+        ),
+        expanded_symbols=(),
+    )
+
+    rerank_result = HybridReranker().rerank(
+        retrieval_result=retrieval_result,
+    )
+
+    builder = RetrievalContextBuilder(
+        chunk_store=chunk_store,
+    )
+
+    result = builder.build(
+        rerank_result=rerank_result,
+        question="How does the fizz feature work?",
+        max_items=2,
+    )
+
+    assert len(result.items) == 2
+
+    assert result.items[0].symbol_id == production_first.id
+    assert result.items[1].symbol_id == production_second.id
+
+
+def test_context_builder_keeps_test_priority_for_testing_question() -> None:
+    source_file_id = uuid4()
+    snapshot_id = uuid4()
+
+    production_first = Symbol.create(
+        source_file_id=source_file_id,
+        name="post_fizz",
+        qualified_name="post_fizz",
+        kind=SymbolKind.FUNCTION,
+        start_line=1,
+        end_line=3,
+    )
+
+    test_symbol = Symbol.create(
+        source_file_id=source_file_id,
+        name="fizz",
+        qualified_name="fizz",
+        kind=SymbolKind.FUNCTION,
+        start_line=5,
+        end_line=7,
+    )
+
+    production_second = Symbol.create(
+        source_file_id=source_file_id,
+        name="create",
+        qualified_name="FizzService.create",
+        kind=SymbolKind.METHOD,
+        start_line=10,
+        end_line=15,
+    )
+
+    chunk_store = InMemoryChunkStore()
+
+    production_first_chunk = Chunk.create(
+        snapshot_id=snapshot_id,
+        source_file_id=source_file_id,
+        symbol_id=production_first.id,
+        text="async def post_fizz(): pass",
+        code="async def post_fizz(): pass",
+        relative_path="app/fizz/controller.py",
+        language="python",
+        qualified_name="post_fizz",
+        symbol_kind="FUNCTION",
+        start_line=1,
+        end_line=3,
+    )
+
+    test_chunk = Chunk.create(
+        snapshot_id=snapshot_id,
+        source_file_id=source_file_id,
+        symbol_id=test_symbol.id,
+        text="def fizz(): pass",
+        code="def fizz(): pass",
+        relative_path="app/fizz/model_test.py",
+        language="python",
+        qualified_name="fizz",
+        symbol_kind="FUNCTION",
+        start_line=5,
+        end_line=7,
+    )
+
+    production_second_chunk = Chunk.create(
+        snapshot_id=snapshot_id,
+        source_file_id=source_file_id,
+        symbol_id=production_second.id,
+        text="async def create(): pass",
+        code="async def create(): pass",
+        relative_path="app/fizz/service.py",
+        language="python",
+        qualified_name="FizzService.create",
+        symbol_kind="METHOD",
+        start_line=10,
+        end_line=15,
+    )
+
+    chunk_store.save_many(
+        (
+            production_first_chunk,
+            test_chunk,
+            production_second_chunk,
+        )
+    )
+
+    retrieval_result = HybridRetrievalResult(
+        semantic_hits=(
+            HybridSemanticHit(
+                symbol=production_first,
+                score=0.90,
+            ),
+            HybridSemanticHit(
+                symbol=test_symbol,
+                score=0.85,
+            ),
+            HybridSemanticHit(
+                symbol=production_second,
+                score=0.80,
+            ),
+        ),
+        expanded_symbols=(),
+    )
+
+    rerank_result = HybridReranker().rerank(
+        retrieval_result=retrieval_result,
+    )
+
+    builder = RetrievalContextBuilder(
+        chunk_store=chunk_store,
+    )
+
+    result = builder.build(
+        rerank_result=rerank_result,
+        question="How is the fizz feature tested?",
+        max_items=2,
+    )
+
+    assert len(result.items) == 2
+
+    assert result.items[0].symbol_id == production_first.id
+    assert result.items[1].symbol_id == test_symbol.id
+
+
+def test_context_builder_excludes_items_below_minimum_score() -> None:
+    source_file_id = uuid4()
+    snapshot_id = uuid4()
+
+    relevant = Symbol.create(
+        source_file_id=source_file_id,
+        name="relevant",
+        qualified_name="relevant",
+        kind=SymbolKind.FUNCTION,
+        start_line=1,
+        end_line=2,
+    )
+
+    weak = Symbol.create(
+        source_file_id=source_file_id,
+        name="weak",
+        qualified_name="weak",
+        kind=SymbolKind.FUNCTION,
+        start_line=4,
+        end_line=5,
+    )
+
+    chunk_store = InMemoryChunkStore()
+
+    relevant_chunk = Chunk.create(
+        snapshot_id=snapshot_id,
+        source_file_id=source_file_id,
+        symbol_id=relevant.id,
+        text="def relevant(): pass",
+        code="def relevant(): pass",
+        relative_path="app/service.py",
+        language="python",
+        qualified_name="relevant",
+        symbol_kind="FUNCTION",
+        start_line=1,
+        end_line=2,
+    )
+
+    weak_chunk = Chunk.create(
+        snapshot_id=snapshot_id,
+        source_file_id=source_file_id,
+        symbol_id=weak.id,
+        text="def weak(): pass",
+        code="def weak(): pass",
+        relative_path="app/service.py",
+        language="python",
+        qualified_name="weak",
+        symbol_kind="FUNCTION",
+        start_line=4,
+        end_line=5,
+    )
+
+    chunk_store.save_many(
+        (
+            relevant_chunk,
+            weak_chunk,
+        )
+    )
+
+    retrieval_result = HybridRetrievalResult(
+        semantic_hits=(
+            HybridSemanticHit(
+                symbol=relevant,
+                score=0.50,
+            ),
+            HybridSemanticHit(
+                symbol=weak,
+                score=0.19,
+            ),
+        ),
+        expanded_symbols=(),
+    )
+
+    rerank_result = HybridReranker().rerank(
+        retrieval_result=retrieval_result,
+    )
+
+    result = RetrievalContextBuilder(
+        chunk_store=chunk_store,
+    ).build(
+        rerank_result=rerank_result,
+        minimum_final_score=0.20,
+    )
+
+    assert len(result.items) == 1
+    assert result.items[0].symbol_id == relevant.id
+
+
+def test_context_builder_allows_custom_minimum_score() -> None:
+    source_file_id = uuid4()
+    snapshot_id = uuid4()
+
+    symbol = Symbol.create(
+        source_file_id=source_file_id,
+        name="weak",
+        qualified_name="weak",
+        kind=SymbolKind.FUNCTION,
+        start_line=1,
+        end_line=2,
+    )
+
+    chunk_store = InMemoryChunkStore()
+
+    chunk = Chunk.create(
+        snapshot_id=snapshot_id,
+        source_file_id=source_file_id,
+        symbol_id=symbol.id,
+        text="def weak(): pass",
+        code="def weak(): pass",
+        relative_path="app/service.py",
+        language="python",
+        qualified_name="weak",
+        symbol_kind="FUNCTION",
+        start_line=1,
+        end_line=2,
+    )
+
+    chunk_store.save_many((chunk,))
+
+    retrieval_result = HybridRetrievalResult(
+        semantic_hits=(
+            HybridSemanticHit(
+                symbol=symbol,
+                score=0.19,
+            ),
+        ),
+        expanded_symbols=(),
+    )
+
+    rerank_result = HybridReranker().rerank(
+        retrieval_result=retrieval_result,
+    )
+
+    result = RetrievalContextBuilder(
+        chunk_store=chunk_store,
+    ).build(
+        rerank_result=rerank_result,
+        minimum_final_score=0.15,
+    )
+
+    assert len(result.items) == 1
+    assert result.items[0].symbol_id == symbol.id

@@ -3,6 +3,18 @@ from pathlib import Path
 
 from qdrant_client import QdrantClient
 
+from codenerva.application.analysis.codenerva_analysis_pipeline import (
+    CodeNervaAnalysisPipeline,
+)
+from codenerva.application.analysis.run_analysis_job import (
+    RunAnalysisJobUseCase,
+)
+from codenerva.application.analysis.start_analysis_job import (
+    StartAnalysisJobUseCase,
+)
+from codenerva.infrastructure.database.postgres_analysis_job_store import (
+    PostgresAnalysisJobStore,
+)
 from codenerva.infrastructure.database.postgres_chunk_store import (
     PostgresChunkStore,
 )
@@ -61,7 +73,9 @@ repository_store = PostgresRepositoryStore(
 snapshot_store = PostgresSnapshotStore(
     session_factory=session_factory,
 )
-
+analysis_job_store = PostgresAnalysisJobStore(
+    session_factory=session_factory,
+)
 git_client = SubprocessGitClient()
 source_file_store = PostgresSourceFileStore(
     session_factory=session_factory,
@@ -90,3 +104,35 @@ vector_store = QdrantVectorStore(
     collection_name="codenerva_chunks",
     dimensions=1536,
 )
+
+
+def get_codenerva_analysis_pipeline() -> CodeNervaAnalysisPipeline:
+    from codenerva.api.snapshots import (
+        get_analyze_snapshot_use_case,
+        get_discover_snapshot_files_use_case,
+        get_incremental_index_snapshot_use_case,
+        get_index_snapshot_use_case,
+    )
+
+    return CodeNervaAnalysisPipeline(
+        snapshot_store=snapshot_store,
+        discover_snapshot_files_use_case=(get_discover_snapshot_files_use_case()),
+        analyze_snapshot_use_case=(get_analyze_snapshot_use_case()),
+        index_snapshot_use_case=(get_index_snapshot_use_case()),
+        incremental_index_snapshot_use_case=(get_incremental_index_snapshot_use_case()),
+    )
+
+
+def get_start_analysis_job_use_case() -> StartAnalysisJobUseCase:
+    return StartAnalysisJobUseCase(
+        snapshot_store=snapshot_store,
+        analysis_job_store=analysis_job_store,
+    )
+
+
+def get_run_analysis_job_use_case() -> RunAnalysisJobUseCase:
+    return RunAnalysisJobUseCase(
+        analysis_job_store=analysis_job_store,
+        analysis_pipeline=get_codenerva_analysis_pipeline(),
+        snapshot_store=snapshot_store,
+    )

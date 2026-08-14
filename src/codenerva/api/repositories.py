@@ -45,6 +45,10 @@ class SnapshotResponse(BaseModel):
     status: str
 
 
+class ListSnapshotsResponse(BaseModel):
+    snapshots: list[SnapshotResponse]
+
+
 def get_clone_repository_use_case() -> CloneRepositoryUseCase:
     return CloneRepositoryUseCase(
         repository_store=repository_store,
@@ -130,4 +134,36 @@ def create_snapshot(
         branch=result.branch,
         remote_url=result.remote_url,
         status=result.status,
+    )
+
+
+@router.get(
+    "/{repository_id}/snapshots",
+    response_model=ListSnapshotsResponse,
+)
+def list_repository_snapshots(
+    repository_id: UUID,
+) -> ListSnapshotsResponse:
+    repository = repository_store.get_by_id(repository_id)
+
+    if repository is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=(f"Repository with id {repository_id} was not found."),
+        )
+
+    snapshots = snapshot_store.list_by_repository_id(repository_id)
+
+    return ListSnapshotsResponse(
+        snapshots=[
+            SnapshotResponse(
+                id=str(snapshot.id),
+                repository_id=str(snapshot.repository_id),
+                commit_sha=snapshot.commit_sha,
+                branch=snapshot.branch,
+                remote_url=snapshot.remote_url,
+                status=snapshot.status.value,
+            )
+            for snapshot in snapshots
+        ]
     )
