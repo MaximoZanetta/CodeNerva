@@ -19,10 +19,6 @@ class JavaScriptSymbolExtractor:
         tree: Tree,
         source: bytes,
     ) -> tuple[ExtractedSymbol, ...]:
-        print(
-            f"[JS EXTRACTOR] root={tree.root_node.type} bytes={len(source)}",
-            flush=True,
-        )
         symbols: list[ExtractedSymbol] = []
 
         self._visit(
@@ -30,10 +26,6 @@ class JavaScriptSymbolExtractor:
             source=source,
             symbols=symbols,
             enclosing_class=None,
-        )
-        print(
-            f"[JS EXTRACTOR] extracted={len(symbols)}",
-            flush=True,
         )
 
         symbols.sort(
@@ -60,11 +52,7 @@ class JavaScriptSymbolExtractor:
             "method_definition",
             "variable_declarator",
         }:
-            print(
-                f"[VISIT] {node.type}",
-                flush=True,
-            )
-        current_class = enclosing_class
+            current_class = enclosing_class
 
         if node.type == "class_declaration":
             class_name = self._extract_name(
@@ -154,10 +142,6 @@ class JavaScriptSymbolExtractor:
             node=name_node,
             source=source,
         )
-        print(
-            f"[ARROW] {name}",
-            flush=True,
-        )
         symbols.append(
             ExtractedSymbol(
                 name=name,
@@ -182,11 +166,6 @@ class JavaScriptSymbolExtractor:
         name = self._node_text(
             node=name_node,
             source=source,
-        )
-
-        print(
-            f"[NAME] {node.type} -> {name}",
-            flush=True,
         )
 
         return name
